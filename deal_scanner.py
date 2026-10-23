@@ -1,0 +1,353 @@
+"""Deal scanner: finds deals far below their usual price and sends them to Telegram.
+
+Usage:
+    python deal_scanner.py            scan, send new deals, remember them
+    python deal_scanner.py --dry-run  scan and print only (sends nothing, remembers nothing)
+    python deal_scanner.py --setup    find your Telegram chat id and send a test message
+
+Settings live in config.json next to this file. The Telegram token and chat id are
+never stored there: they come from the TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID
+environment variables (GitHub Actions secrets) or from a local secrets.json.
+"""
+import argparse
+import csv
+import html
+import json
+import os
+import re
+import sys
+import time
+import xml.etree.ElementTree as ET
+from datetime import datetime
+from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
+
+import requests
+
+HERE = Path(__file__).resolve().parent
+CONFIG = HERE / "config.json"
+SECRETS = HERE / "secrets.json"  # local only, listed in .gitignore
+STATE = HERE / "seen.json"
+FOUND_LOG = HERE / "found_deals.csv"
+RUN_LOG = HERE / "scanner.log"
+
+UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+      "(KHTML, like Gecko) Chrome/130.0 Safari/537.36")
+
+# Deal communities (Pepper network). Each deal carries its price and the
+# cheapest price elsewhere ("nextBestPrice"), which we use as the usual price.
+PEPPER_SITES = {
+    "mydealz":     ("🇩🇪", "https://www.mydealz.de/new", "€"),
+    "preisjaeger": ("🇦🇹", "https://www.preisjaeger.at/neu", "€"),
+    "dealabs":     ("🇫🇷", "https://www.dealabs.com/nouveaux", "€"),
+    "chollometro": ("🇪🇸", "https://www.chollometro.com/nuevos", "€"),
+    "pepper_nl":   ("🇳🇱", "https://nl.pepper.com/nieuw", "€"),
+    "pepper_pl":   ("🇵🇱", "https://www.pepper.pl/nowe", "zł"),
+}
+
+# camelcamelcamel Amazon price drops: "recent" is the live stream,
+# "t=daily" is the day's top drops (so hourly runs don't miss the big ones).
+CAMEL_SITES = {
+    "camel_de": ("🇩🇪", "Amazon.de", "https://de.camelcamelcamel.com/top_drops/feed"),
+    "camel_it": ("🇮🇹", "Amazon.it", "https://it.camelcamelcamel.com/top_drops/feed"),
+    "camel_es": ("🇪🇸", "Amazon.es", "https://es.camelcamelcamel.com/top_drops/feed"),
+    "camel_fr": ("🇫🇷", "Amazon.fr", "https://fr.camelcamelcamel.com/top_drops/feed"),
+}
+CAMEL_LISTS = ["", "?t=daily"]
+
+TO_EUR = {"€": 1.0, "zł": 0.23}
+
+# Monthly prices (phone contracts, subscriptions) compared against a device's
+# full price would look like 95% drops, so they are skipped.
+MONTHLY = re.compile(
+    r"mtl\b|monatl|/\s*monat|pro monat|im monat|vertrag|tarif|"
+    r"al mese|/\s*mese|par mois|/\s*mois|forfait|al mes\b|/\s*mes\b|"
+    r"per maand|/\s*maand|p/m\b|abonnement|miesięcznie|/\s*mies|abonament",
+    re.IGNORECASE)
+
+PRICE_ERROR = re.compile(
+    r"preisfehler|fehlerpreis|price error|prijsfout|error de precio|"
+    r"erreur de prix|errore di prezzo|błąd cenowy",
+    re.IGNORECASE)
+
+
+def log(msg):
+    line = f"{datetime.now():%Y-%m-%d %H:%M} {msg}"
+    print(line)
+    with RUN_LOG.open("a", encoding="utf-8") as f:
+        f.write(line + "\n")
+
+
+def fetch(session, url):
+    r = session.get(url, timeout=30)
+    if r.status_code == 429:  # rate limited: wait once and retry
+        time.sleep(60)
+        r = session.get(url, timeout=30)
+    r.raise_for_status()
+    # be polite between requests; camelcamelcamel rate-limits bursts across its country sites
+    time.sleep(15 if "camelcamelcamel" in url else 3)
+    return r.text
+
+
+def parse_money(text):
+    s = re.sub(r"[^\d,.]", "", text)
+    if "," in s:
+        s = s.replace(".", "").replace(",", ".")
+    return float(s) if s else None
+
+
+def pepper_deals(session, name, cfg):
+    flag, url, cur = PEPPER_SITES[name]
+    deals = []
+    for page in range(1, cfg["pepper_pages"] + 1):
+        page_html = fetch(session, url + (f"?page={page}" if page > 1 else ""))
+        for blob in re.findall(r"data-vue3='([^']*)'", page_html):
+            try:
+                th = json.loads(html.unescape(blob)).get("props", {}).get("thread")
+            except (ValueError, AttributeError):
+                continue
+            if not th or th.get("type") != "Deal" or th.get("isExpired") or th.get("isLocal"):
+                continue
+            price = th.get("price") or 0
+            ref = th.get("nextBestPrice") or 0
+            pct = th.get("percentage") or 0
+            if ref <= price and 0 < pct < 100 and price > 0:
+                ref = price / (1 - pct / 100)  # discount stated by the poster
+            title = html.unescape(th.get("title", ""))
+            is_error = bool(PRICE_ERROR.search(title))
+            if (ref <= price or MONTHLY.search(title)) and not is_error:
+                continue
+            deals.append({
+                "key": f"{name}:{th['threadId']}",
+                "flag": flag,
+                "where": (th.get("merchant") or {}).get("merchantName") or th.get("linkHost") or name,
+                "source": name,
+                "title": title,
+                "price": price,
+                "ref": ref if ref > price else None,
+                "cur": cur,
+                "price_error": is_error,
+                "url": th.get("shareableLink") or url,
+                "visit_url": f"https://{urlsplit(url).netloc}/visit/threadmain/{th['threadId']}",
+            })
+    return deals
+
+
+CAMEL_TITLE = re.compile(r"^(.*) - down ([\d.]+)% \(.*?\) to (.+?) from (.+)$")
+
+
+def camel_deals(session, name, cfg):
+    flag, store, url = CAMEL_SITES[name]
+    deals = []
+    for suffix in CAMEL_LISTS:
+        root = ET.fromstring(fetch(session, url + suffix))
+        for item in root.iter("item"):
+            m = CAMEL_TITLE.match(item.findtext("title", ""))
+            if not m:
+                continue
+            title, _, now, before = m.groups()
+            price, ref = parse_money(now), parse_money(before)
+            if price is None or not ref or ref <= price:
+                continue
+            link = item.findtext("link", "")
+            asin = link.rsplit("/", 1)[-1]
+            deals.append({
+                "key": f"{name}:{asin}:{price}",
+                "flag": flag,
+                "where": store,
+                "source": "camelcamelcamel",
+                "title": title,
+                "price": price,
+                "ref": ref,
+                "cur": "€",
+                "price_error": False,
+                # camelcamelcamel pages often block phone browsers, so link the product itself
+                "url": f"https://www.{store.lower()}/dp/{asin}",
+                "extra_url": link,
+                "extra_label": "📈 ιστορικό τιμής",
+            })
+    return deals
+
+
+def add_shop_links(session, deals):
+    """Point community deals straight at the shop, read from the site's redirect (not followed)."""
+    for d in deals:
+        if "visit_url" not in d:
+            continue
+        try:
+            target = session.get(d["visit_url"], allow_redirects=False, timeout=30).headers.get("Location", "")
+        except requests.RequestException:
+            continue
+        shop = parse_qs(urlsplit(target).query).get("url", [target])[0]
+        if shop.startswith("http") and urlsplit(shop).netloc != urlsplit(d["url"]).netloc:
+            d["extra_url"], d["extra_label"] = d["url"], "💬 σελίδα προσφοράς"
+            d["url"] = shop
+        time.sleep(1)
+
+
+def is_big(deal, cfg):
+    text = f"{deal['title']} {deal['where']}".lower()
+    if any(w.lower() in text for w in cfg.get("exclude_words", [])):
+        return False
+    if deal["price_error"]:
+        return True
+    if not deal["ref"]:
+        return False
+    drop = 1 - deal["price"] / deal["ref"]
+    saving_eur = (deal["ref"] - deal["price"]) * TO_EUR.get(deal["cur"], 1.0)
+    return drop * 100 >= cfg["min_drop_percent"] and saving_eur >= cfg["min_saving_eur"]
+
+
+def fmt_price(value, cur):
+    return f"{value:,.2f}".replace(",", " ").replace(".", ",") + cur
+
+
+def format_deal(d):
+    if d["ref"]:
+        drop = round((1 - d["price"] / d["ref"]) * 100)
+        head = f"🔥 <b>−{drop}%</b>  {fmt_price(d['price'], d['cur'])} (αντί {fmt_price(d['ref'], d['cur'])})"
+    else:
+        head = f"🔥 <b>{fmt_price(d['price'], d['cur'])}</b>"
+    if d["price"] == 0:
+        head += "  <b>ΔΩΡΕΑΝ</b>"
+    if d["price_error"]:
+        head += "  ⚠️ <b>λάθος τιμής</b>"
+    host = urlsplit(d["url"]).netloc.removeprefix("www.")
+    links = f'🛒 <a href="{html.escape(d["url"])}">{html.escape(host)}</a>'
+    if d.get("extra_url"):
+        links += f'\n<a href="{html.escape(d["extra_url"])}">{d["extra_label"]}</a>'
+    return (f"{head}\n{html.escape(d['title'][:160], quote=False)}\n"
+            f"{d['flag']} {html.escape(d['where'], quote=False)} · {d['source']}\n{links}")
+
+
+def send_telegram(cfg, text):
+    r = requests.post(
+        f"https://api.telegram.org/bot{cfg['telegram_bot_token']}/sendMessage",
+        json={"chat_id": cfg["telegram_chat_id"], "text": text,
+              "parse_mode": "HTML", "disable_web_page_preview": True},
+        timeout=30)
+    r.raise_for_status()
+
+
+def send_deals(cfg, deals):
+    header = f"<b>{len(deals)} νέες προσφορές</b> (πτώση ≥{cfg['min_drop_percent']}%)"
+    chunks, current = [], header
+    for d in deals:
+        block = format_deal(d)
+        if len(current) + len(block) + 2 > 4000:  # Telegram limit is 4096
+            chunks.append(current)
+            current = block
+        else:
+            current += "\n\n" + block
+    chunks.append(current)
+    for chunk in chunks:
+        send_telegram(cfg, chunk)
+
+
+def load_secrets():
+    local = json.loads(SECRETS.read_text(encoding="utf-8")) if SECRETS.exists() else {}
+    return {
+        "telegram_bot_token": os.environ.get("TELEGRAM_BOT_TOKEN") or local.get("telegram_bot_token", ""),
+        "telegram_chat_id": os.environ.get("TELEGRAM_CHAT_ID") or local.get("telegram_chat_id", ""),
+    }
+
+
+def telegram_ready(cfg):
+    token = cfg.get("telegram_bot_token", "")
+    return ":" in token and str(cfg.get("telegram_chat_id", "")).strip() != ""
+
+
+def setup(cfg):
+    token = cfg.get("telegram_bot_token", "")
+    if ":" not in token:
+        print("Βάλε πρώτα το token του bot στο secrets.json (telegram_bot_token).")
+        return 1
+    print("Περιμένω μήνυμά σου στο bot (έως 5 λεπτά)...", flush=True)
+    chats, deadline = [], time.time() + 300
+    while not chats and time.time() < deadline:
+        r = requests.get(f"https://api.telegram.org/bot{token}/getUpdates",
+                         params={"timeout": 50}, timeout=60)  # long polling
+        r.raise_for_status()
+        chats = [u["message"]["chat"]["id"] for u in r.json().get("result", []) if "message" in u]
+    if not chats:
+        print("Δεν βρέθηκε μήνυμα. Άνοιξε το bot σου στο Telegram, πάτα Start, και ξανατρέξε --setup.")
+        return 1
+    cfg["telegram_chat_id"] = chats[-1]
+    SECRETS.write_text(json.dumps({"telegram_bot_token": token, "telegram_chat_id": chats[-1]},
+                                  indent=2), encoding="utf-8")
+    send_telegram(cfg, "✅ Ο ανιχνευτής προσφορών είναι συνδεδεμένος. Θα σου στέλνω μόνο νέες μεγάλες πτώσεις.")
+    print(f"OK, chat id {chats[-1]} αποθηκεύτηκε και στάλθηκε δοκιμαστικό μήνυμα.")
+    return 0
+
+
+def main():
+    if sys.stdout:  # None when started windowless by Task Scheduler (pythonw)
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--setup", action="store_true")
+    args = ap.parse_args()
+
+    cfg = json.loads(CONFIG.read_text(encoding="utf-8"))
+    cfg.update(load_secrets())
+    if args.setup:
+        return setup(cfg)
+
+    seen = json.loads(STATE.read_text(encoding="utf-8")) if STATE.exists() else {}
+    session = requests.Session()
+    session.headers.update({"User-Agent": UA, "Accept-Language": "en;q=0.8"})
+
+    found, counts = [], []
+    for name, enabled in cfg["sources"].items():
+        if not enabled:
+            continue
+        scan = pepper_deals if name in PEPPER_SITES else camel_deals
+        try:
+            deals = scan(session, name, cfg)
+        except Exception as e:  # one broken source must not stop the others
+            log(f"{name}: σφάλμα {e.__class__.__name__}: {e}")
+            continue
+        big = [d for d in deals if is_big(d, cfg)]
+        counts.append(f"{name} {len(big)}/{len(deals)}")
+        found.extend(big)
+
+    new, keys = [], set()
+    for d in found:
+        if d["key"] not in seen and d["key"] not in keys:
+            keys.add(d["key"])
+            new.append(d)
+    new.sort(key=lambda d: (not d["price_error"], d["price"] / d["ref"] if d["ref"] else 1))
+    log(f"έλεγχος: {', '.join(counts)} -> {len(new)} νέες")
+    add_shop_links(session, new)
+
+    if args.dry_run:
+        for d in new:
+            text = re.sub(r'<a href="([^"]*)">(.*?)</a>', r"\2 \1", format_deal(d))
+            print("\n" + re.sub(r"</?b>", "", text))
+        return 0
+    if not new:
+        return 0
+
+    if telegram_ready(cfg):
+        send_deals(cfg, new)
+    else:
+        log("Το Telegram δεν έχει ρυθμιστεί ακόμα· οι προσφορές γράφτηκαν μόνο στο found_deals.csv")
+
+    now = int(time.time())
+    seen.update({d["key"]: now for d in new})
+    seen = {k: t for k, t in seen.items() if now - t < 30 * 86400}
+    STATE.write_text(json.dumps(seen), encoding="utf-8")
+    write_header = not FOUND_LOG.exists()
+    with FOUND_LOG.open("a", newline="", encoding="utf-8-sig") as f:
+        w = csv.writer(f)
+        if write_header:
+            w.writerow(["time", "drop_%", "price", "usual_price", "currency", "title", "store", "url"])
+        for d in new:
+            drop = round((1 - d["price"] / d["ref"]) * 100) if d["ref"] else ""
+            w.writerow([datetime.now().strftime("%Y-%m-%d %H:%M"), drop, d["price"],
+                        d["ref"] or "", d["cur"], d["title"], d["where"], d["url"]])
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,43 @@
+name: Deal scan
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Test only: scan and print, send nothing"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write  # to save seen.json / found_deals.csv after each run
+
+concurrency:
+  group: deal-scan
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - run: pip install requests
+      - name: Scan
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          DRY_RUN: ${{ inputs.dry_run && '--dry-run' || '' }}
+        run: python deal_scanner.py $DRY_RUN
+      - name: Remember what was sent
+        if: ${{ !inputs.dry_run }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add seen.json found_deals.csv
+          if ! git diff --cached --quiet; then
+            git commit -m "Remember sent deals"
+            git pull --rebase
+            git push
+          fi

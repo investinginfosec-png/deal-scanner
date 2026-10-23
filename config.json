@@ -1,0 +1,18 @@
+{
+  "min_drop_percent": 50,
+  "min_saving_eur": 10,
+  "pepper_pages": 2,
+  "exclude_words": [],
+  "sources": {
+    "mydealz": true,
+    "preisjaeger": true,
+    "dealabs": true,
+    "chollometro": true,
+    "pepper_nl": true,
+    "pepper_pl": true,
+    "camel_de": true,
+    "camel_it": true,
+    "camel_es": true,
+    "camel_fr": true
+  }
+}
