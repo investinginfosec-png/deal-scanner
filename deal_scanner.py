@@ -55,6 +55,12 @@ CAMEL_SITES = {
 }
 CAMEL_LISTS = ["", "?t=daily"]
 
+# Skroutz (Greek shops): its deals pages list products whose price dropped, with the
+# previous price struck through. The categories to check come from config.json.
+# Skroutz blocks IPs that send many requests, so each run fetches one page per category,
+# alternating hourly between the newest drops and the biggest drops.
+SKROUTZ_ORDERS = ["newest", "discount_percentage"]
+
 TO_EUR = {"€": 1.0, "zł": 0.23}
 
 # Monthly prices (phone contracts, subscriptions) compared against a device's
@@ -84,8 +90,8 @@ def fetch(session, url):
         time.sleep(60)
         r = session.get(url, timeout=30)
     r.raise_for_status()
-    # be polite between requests; camelcamelcamel rate-limits bursts across its country sites
-    time.sleep(15 if "camelcamelcamel" in url else 3)
+    # be polite between requests; camelcamelcamel and Skroutz block bursts of requests
+    time.sleep(15 if "camelcamelcamel" in url else 8 if "skroutz" in url else 3)
     return r.text
 
 
@@ -129,6 +135,8 @@ def pepper_deals(session, name, cfg):
                 "price_error": is_error,
                 "url": th.get("shareableLink") or url,
                 "visit_url": f"https://{urlsplit(url).netloc}/visit/threadmain/{th['threadId']}",
+                "shop_host": th.get("linkHost") or "",
+                "category": (th.get("mainGroup") or {}).get("threadGroupUrlName") or "",
             })
     return deals
 
@@ -165,6 +173,44 @@ def camel_deals(session, name, cfg):
                 "url": f"https://www.{store.lower()}/dp/{asin}",
                 "extra_url": link,
                 "extra_label": "📈 ιστορικό τιμής",
+                "shop_host": store.lower(),
+            })
+    return deals
+
+
+def skroutz_deals(session, name, cfg):
+    deals = []
+    order = SKROUTZ_ORDERS[datetime.now().hour % len(SKROUTZ_ORDERS)]
+    for path in cfg["skroutz_categories"]:
+        page_html = fetch(session, f"https://www.skroutz.gr/deals/c/{path}?order_by={order}&order_dir=desc")
+        for card in page_html.split('data-testid="sku-cardd"')[1:]:
+            badge = re.search(r'<span>-\d+%</span></span><span class="secondary-text">([^<]+)<', card)
+            if not badge or badge.group(1) != "πτώση τιμής":  # skip multi-buy, Plus-only, expiring stock
+                continue
+            title = re.search(r'title="([^"]+)" data-testid="sku-title-link"', card)
+            link = re.search(r'href="(/s/\d+/[^"?]+)', card)
+            before = re.search(r"<strike>([\d.,]+)\s*€</strike>", card)
+            now = re.search(r'sku-price-link"[^>]*>(?:<span>[^<]*</span>)?([\d.,]+)\s*€', card)
+            if not (title and link and before and now):
+                continue
+            price, ref = parse_money(now.group(1)), parse_money(before.group(1))
+            if not price or not ref or ref <= price:
+                continue
+            category = re.search(r'class="category-name"[^>]*>([^<]+)<', card)
+            shops = re.search(r"σε (\d+) καταστήματα", card)
+            deals.append({
+                "key": f"skroutz:{link.group(1).split('/')[2]}:{price}",
+                "flag": "🇬🇷",
+                "where": html.unescape(category.group(1)) if category else "Skroutz",
+                "source": "skroutz" + (f" · σε {shops.group(1)} καταστήματα" if shops else ""),
+                "title": html.unescape(title.group(1)),
+                "price": price,
+                "ref": ref,
+                "cur": "€",
+                "price_error": False,
+                "url": "https://www.skroutz.gr" + link.group(1),
+                "shop_host": "skroutz.gr",
+                "local": True,
             })
     return deals
 
@@ -185,13 +231,32 @@ def add_shop_links(session, deals):
         time.sleep(1)
 
 
+def free_delivery_from(deal, cfg):
+    """Price from which the deal's shop delivers free to Greece; None if the shop isn't allowed."""
+    if deal.get("local"):
+        return 0
+    host = deal.get("shop_host", "").lower().removeprefix("www.")
+    for domain, min_price in cfg["shops"].items():
+        if host == domain or host.endswith("." + domain):
+            return min_price
+    return None
+
+
 def is_big(deal, cfg):
     text = f"{deal['title']} {deal['where']}".lower()
     if any(w.lower() in text for w in cfg.get("exclude_words", [])):
         return False
+    free_from = free_delivery_from(deal, cfg)
+    if free_from is None:
+        return False
+    deal["free_from"] = free_from  # shown in the message
+    if "category" in deal and deal["category"] not in cfg["pepper_categories"]:
+        return False
     if deal["price_error"]:
-        return True
-    if not deal["ref"]:
+        return True  # worth it even with a delivery fee
+    if not deal["ref"] or deal["price"] < free_from:
+        return False
+    if deal["ref"] * TO_EUR.get(deal["cur"], 1.0) < cfg["min_usual_price_eur"]:
         return False
     drop = 1 - deal["price"] / deal["ref"]
     saving_eur = (deal["ref"] - deal["price"]) * TO_EUR.get(deal["cur"], 1.0)
@@ -216,8 +281,9 @@ def format_deal(d):
     links = f'🛒 <a href="{html.escape(d["url"])}">{html.escape(host)}</a>'
     if d.get("extra_url"):
         links += f'\n<a href="{html.escape(d["extra_url"])}">{d["extra_label"]}</a>'
+    delivery = f"\n🚚 δωρεάν αποστολή στην Ελλάδα (πάνω από {d['free_from']}€)" if d.get("free_from") else ""
     return (f"{head}\n{html.escape(d['title'][:160], quote=False)}\n"
-            f"{d['flag']} {html.escape(d['where'], quote=False)} · {d['source']}\n{links}")
+            f"{d['flag']} {html.escape(d['where'], quote=False)} · {d['source']}{delivery}\n{links}")
 
 
 def telegram_call(token, method, http_timeout=30, **payload):
@@ -320,7 +386,10 @@ def main():
     for name, enabled in cfg["sources"].items():
         if not enabled:
             continue
-        scan = pepper_deals if name in PEPPER_SITES else camel_deals
+        if name == "skroutz":
+            scan = skroutz_deals
+        else:
+            scan = pepper_deals if name in PEPPER_SITES else camel_deals
         try:
             deals = scan(session, name, cfg)
         except Exception as e:  # one broken source must not stop the others

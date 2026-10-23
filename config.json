@@ -1,18 +1,35 @@
 {
   "min_drop_percent": 50,
   "min_saving_eur": 10,
+  "min_usual_price_eur": 80,
+  "shops": {
+    "amazon.de": 59
+  },
+  "pepper_categories": [
+    "elektronik", "gaming", "home-living", "garten-baumarkt",
+    "high-tech", "consoles-jeux-video", "maison-habitat", "jardin-bricolage",
+    "electronica", "consolas-y-videojuegos", "hogar-y-jardin", "jardin-y-bricolaje",
+    "elektronica", "wonen", "doe-het-zelf",
+    "elektronika", "gry", "dom-i-mieszkanie", "dom"
+  ],
+  "skroutz_categories": [
+    "1269/technology",
+    "54/oikiakes-syskeues",
+    "5532/tools-garden"
+  ],
   "pepper_pages": 2,
   "exclude_words": [],
   "sources": {
+    "skroutz": true,
     "mydealz": true,
     "preisjaeger": true,
-    "dealabs": true,
-    "chollometro": true,
-    "pepper_nl": true,
-    "pepper_pl": true,
     "camel_de": true,
-    "camel_it": true,
-    "camel_es": true,
-    "camel_fr": true
+    "dealabs": false,
+    "chollometro": false,
+    "pepper_nl": false,
+    "pepper_pl": false,
+    "camel_it": false,
+    "camel_es": false,
+    "camel_fr": false
   }
 }
