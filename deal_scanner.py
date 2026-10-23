@@ -251,11 +251,19 @@ def send_deals(cfg, deals):
         send_telegram(cfg, chunk)
 
 
+TOKEN_SHAPE = re.compile(r"\d+:[A-Za-z0-9_-]{30,}")
+
+
+def clean_secret(value):
+    """Forgive stray spaces, line breaks or quotes pasted around a secret."""
+    return str(value).strip().strip("\"'").strip()
+
+
 def load_secrets():
     local = json.loads(SECRETS.read_text(encoding="utf-8")) if SECRETS.exists() else {}
     return {
-        "telegram_bot_token": os.environ.get("TELEGRAM_BOT_TOKEN") or local.get("telegram_bot_token", ""),
-        "telegram_chat_id": os.environ.get("TELEGRAM_CHAT_ID") or local.get("telegram_chat_id", ""),
+        "telegram_bot_token": clean_secret(os.environ.get("TELEGRAM_BOT_TOKEN") or local.get("telegram_bot_token", "")),
+        "telegram_chat_id": clean_secret(os.environ.get("TELEGRAM_CHAT_ID") or local.get("telegram_chat_id", "")),
     }
 
 
@@ -297,6 +305,12 @@ def main():
     cfg.update(load_secrets())
     if args.setup:
         return setup(cfg)
+    token = cfg["telegram_bot_token"]
+    if not args.dry_run and token and not TOKEN_SHAPE.fullmatch(token):
+        # stop before scanning, so no deal is marked as sent; never print the token itself
+        log("Το token του Telegram δεν έχει τη μορφή token bot (αριθμοί:γράμματα). "
+            "Έλεγξε το secret TELEGRAM_BOT_TOKEN.")
+        return 1
 
     seen = json.loads(STATE.read_text(encoding="utf-8")) if STATE.exists() else {}
     session = requests.Session()
