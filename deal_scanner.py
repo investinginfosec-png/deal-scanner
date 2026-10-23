@@ -220,13 +220,20 @@ def format_deal(d):
             f"{d['flag']} {html.escape(d['where'], quote=False)} · {d['source']}\n{links}")
 
 
+def telegram_call(token, method, http_timeout=30, **payload):
+    """Call the Bot API without ever letting the URL (it contains the token) reach an error or log."""
+    try:
+        r = requests.post(f"https://api.telegram.org/bot{token}/{method}", json=payload, timeout=http_timeout)
+    except requests.RequestException as e:
+        raise RuntimeError(f"Telegram {method}: {e.__class__.__name__}") from None
+    if not r.ok:
+        raise RuntimeError(f"Telegram {method}: {r.status_code} {r.text[:200]}")
+    return r.json()
+
+
 def send_telegram(cfg, text):
-    r = requests.post(
-        f"https://api.telegram.org/bot{cfg['telegram_bot_token']}/sendMessage",
-        json={"chat_id": cfg["telegram_chat_id"], "text": text,
-              "parse_mode": "HTML", "disable_web_page_preview": True},
-        timeout=30)
-    r.raise_for_status()
+    telegram_call(cfg["telegram_bot_token"], "sendMessage", chat_id=cfg["telegram_chat_id"],
+                  text=text, parse_mode="HTML", disable_web_page_preview=True)
 
 
 def send_deals(cfg, deals):
@@ -265,10 +272,8 @@ def setup(cfg):
     print("Περιμένω μήνυμά σου στο bot (έως 5 λεπτά)...", flush=True)
     chats, deadline = [], time.time() + 300
     while not chats and time.time() < deadline:
-        r = requests.get(f"https://api.telegram.org/bot{token}/getUpdates",
-                         params={"timeout": 50}, timeout=60)  # long polling
-        r.raise_for_status()
-        chats = [u["message"]["chat"]["id"] for u in r.json().get("result", []) if "message" in u]
+        updates = telegram_call(token, "getUpdates", http_timeout=60, timeout=50)  # long polling
+        chats = [u["message"]["chat"]["id"] for u in updates.get("result", []) if "message" in u]
     if not chats:
         print("Δεν βρέθηκε μήνυμα. Άνοιξε το bot σου στο Telegram, πάτα Start, και ξανατρέξε --setup.")
         return 1
