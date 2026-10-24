@@ -203,7 +203,7 @@
     "mydealz": true,
     "preisjaeger": true,
     "camel_de": true,
-    "insomnia": true,
+    "insomnia": false,
     "dealabs": false,
     "chollometro": false,
     "pepper_nl": false,
