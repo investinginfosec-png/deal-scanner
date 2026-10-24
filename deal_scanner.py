@@ -211,6 +211,7 @@ def skroutz_deals(session, name, cfg):
                 "url": "https://www.skroutz.gr" + link.group(1),
                 "shop_host": "skroutz.gr",
                 "local": True,
+                "topic": "Skroutz",
             })
     return deals
 
@@ -242,6 +243,20 @@ def free_delivery_from(deal, cfg):
     return None
 
 
+def matching_topic(deal, cfg):
+    """Name of the chosen topic the deal fits, by its community category or else a word in its title."""
+    if deal.get("topic"):  # Skroutz deals come from the category pages chosen in the config
+        return deal["topic"]
+    for name, topic in cfg["topics"].items():
+        if deal.get("category") in topic.get("categories", []):
+            return name
+    title = deal["title"].lower()
+    for name, topic in cfg["topics"].items():
+        if any(w.lower() in title for w in topic.get("words", [])):
+            return name
+    return None
+
+
 def is_big(deal, cfg):
     text = f"{deal['title']} {deal['where']}".lower()
     if any(w.lower() in text for w in cfg.get("exclude_words", [])):
@@ -250,7 +265,8 @@ def is_big(deal, cfg):
     if free_from is None:
         return False
     deal["free_from"] = free_from  # shown in the message
-    if "category" in deal and deal["category"] not in cfg["pepper_categories"]:
+    deal["topic"] = matching_topic(deal, cfg)
+    if not deal["topic"]:
         return False
     if deal["price_error"]:
         return True  # worth it even with a delivery fee
@@ -282,8 +298,9 @@ def format_deal(d):
     if d.get("extra_url"):
         links += f'\n<a href="{html.escape(d["extra_url"])}">{d["extra_label"]}</a>'
     delivery = f"\n🚚 δωρεάν αποστολή στην Ελλάδα (πάνω από {d['free_from']}€)" if d.get("free_from") else ""
+    topic = f"\n🏷️ {html.escape(d['topic'], quote=False)}" if d.get("topic") else ""
     return (f"{head}\n{html.escape(d['title'][:160], quote=False)}\n"
-            f"{d['flag']} {html.escape(d['where'], quote=False)} · {d['source']}{delivery}\n{links}")
+            f"{d['flag']} {html.escape(d['where'], quote=False)} · {d['source']}{delivery}{topic}\n{links}")
 
 
 def telegram_call(token, method, http_timeout=30, **payload):

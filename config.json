@@ -5,17 +5,62 @@
   "shops": {
     "amazon.de": 59
   },
-  "pepper_categories": [
-    "elektronik", "gaming", "home-living", "garten-baumarkt",
-    "high-tech", "consoles-jeux-video", "maison-habitat", "jardin-bricolage",
-    "electronica", "consolas-y-videojuegos", "hogar-y-jardin", "jardin-y-bricolaje",
-    "elektronica", "wonen", "doe-het-zelf",
-    "elektronika", "gry", "dom-i-mieszkanie", "dom"
-  ],
+  "topics": {
+    "κονσόλες & gaming": {
+      "categories": ["gaming", "consoles-jeux-video", "consolas-y-videojuegos", "gry"],
+      "words": [
+        "PlayStation", "PS5", "Xbox", "Nintendo", "Steam Deck", "ROG Ally", "Legion Go",
+        "Meta Quest", "DualSense", "Gamepad", "Controller", "Gaming"
+      ]
+    },
+    "σπίτι & κουζίνα": {
+      "categories": ["home-living", "maison-habitat", "hogar-y-jardin", "wonen", "dom-i-mieszkanie", "dom"],
+      "words": [
+        "Eismaschine", "Ninja Creami", "Popcorn", "Heißluftfritteuse", "Heissluftfritteuse", "Airfryer",
+        "Air Fryer", "Ninja Foodi", "Kaffeevollautomat", "Siebträger", "Espresso", "Kaffeemaschine",
+        "Nespresso", "Dolce Gusto", "Standmixer", "Küchenmaschine", "Thermomix", "Monsieur Cuisine",
+        "Multikocher", "Schnellkochtopf", "Waffeleisen", "Sandwichmaker", "Toaster", "Wasserkocher",
+        "Kontaktgrill", "Raclette", "Sous Vide", "Dörrautomat", "Brotbackautomat", "Entsafter",
+        "Mikrowelle", "Kochfeld", "Topfset", "Pfannenset", "Messerset", "SodaStream", "Wassersprudler",
+        "Staubsauger", "Saugroboter", "Saugwischer", "Akkusauger", "Wischsauger", "Dyson", "Roborock",
+        "Luftreiniger", "Luftentfeuchter", "Ventilator", "Heizlüfter", "Klimagerät", "Bügeleisen",
+        "Dampfreiniger", "Waschmaschine", "Wäschetrockner", "Geschirrspüler", "Spülmaschine",
+        "Kühlschrank", "Gefrierschrank", "Matratze", "Bettdecke", "Kopfkissen", "Thermostat", "Smart Home"
+      ]
+    },
+    "υπολογιστές & οθόνες": {
+      "categories": [],
+      "words": [
+        "Monitor", "Bildschirm", "QD-OLED", "WQHD", "Curved", "Laptop", "Notebook", "MacBook", "Mac mini", "iMac", "Chromebook",
+        "Mini-PC", "Mini PC", "Gaming-PC", "Gaming PC", "Desktop-PC", "All-in-One", "Grafikkarte",
+        "GeForce", "RTX", "Radeon", "SSD", "NVMe", "Arbeitsspeicher", "DDR5", "Ryzen", "Core i5",
+        "Core i7", "Core i9", "Core Ultra", "Mainboard", "Tastatur", "Keyboard", "Maus", "Mouse",
+        "Webcam", "Dockingstation", "Drucker", "Synology", "QNAP", "FRITZ!Box", "Router",
+        "CPU", "PC-Gehäuse", "Wasserkühlung", "ASUS ROG", "Corsair", "Logitech"
+      ]
+    },
+    "μπαγκαζιέρα οροφής": {
+      "categories": [],
+      "words": ["Dachbox", "Dachkoffer", "Skibox", "Dachträger", "Relingträger", "Grundträger", "roof box"]
+    },
+    "χρήσιμα καθημερινά": {
+      "categories": [],
+      "words": [
+        "Powerbank", "Ladegerät", "Ladestation", "Taschenlampe", "Stirnlampe", "Rucksack", "Reisekoffer",
+        "Hartschalenkoffer", "Handgepäck", "Trolley", "Thermobecher", "Isolierflasche", "Personenwaage", "Steckdosenleiste", "Smart Plug"
+      ]
+    }
+  },
   "skroutz_categories": [
-    "1269/technology",
+    "22/hlektronikoi-ypologistes-pc",
+    "769/laptops-kai-accessories",
+    "27/pc-hardware",
+    "1864/Gaming",
     "54/oikiakes-syskeues",
-    "5532/tools-garden"
+    "1271/mikrosyskeves-proinou-snak",
+    "4154/oikiakes-syskeves-mageirematos",
+    "11/home-garden",
+    "6314/sxares-bagazieres"
   ],
   "pepper_pages": 2,
   "exclude_words": [
