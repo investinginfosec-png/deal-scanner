@@ -1,5 +1,5 @@
 {
-  "min_drop_percent": 50,
+  "min_drop_percent": 30,
   "min_saving_eur": 10,
   "min_usual_price_eur": 80,
   "shops": {
