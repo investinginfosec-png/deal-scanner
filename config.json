@@ -20,7 +20,7 @@
   "pepper_pages": 2,
   "exclude_words": [],
   "sources": {
-    "skroutz": true,
+    "skroutz": false,
     "mydealz": true,
     "preisjaeger": true,
     "camel_de": true,
