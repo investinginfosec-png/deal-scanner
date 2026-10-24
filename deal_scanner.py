@@ -17,8 +17,10 @@ import os
 import re
 import sys
 import time
+import unicodedata
 import xml.etree.ElementTree as ET
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from urllib.parse import parse_qs, quote_plus, urlsplit
 
@@ -154,6 +156,43 @@ def pepper_deals(session, name, cfg):
 CAMEL_TITLE = re.compile(r"^(.*) - down ([\d.]+)% \(.*?\) to (.+?) from (.+)$")
 
 
+INSOMNIA_RSS = "https://www.insomnia.gr/rss/16-offers.xml/"
+PRICE_IN_TEXT = re.compile(r"(\d{1,5}(?:[.,]\d{1,2})?)\s*€|€\s*(\d{1,5}(?:[.,]\d{1,2})?)")
+
+
+def insomnia_deals(session, name, cfg):
+    """Offers posted by insomnia.gr members, mostly in Greek shops. They are free text with no
+    usual price, so only the topic, brand and condition filters apply to them."""
+    root = ET.fromstring(fetch(session, INSOMNIA_RSS))
+    oldest = datetime.now(timezone.utc) - timedelta(days=cfg["insomnia_days"])
+    deals = []
+    for item in root.iter("item"):
+        try:
+            published = parsedate_to_datetime(item.findtext("pubDate", ""))
+        except (TypeError, ValueError):
+            continue
+        if published < oldest:  # the feed reaches back weeks; old offers have usually ended
+            continue
+        title = html.unescape(item.findtext("title", "")).strip()
+        link = item.findtext("link", "")
+        price = PRICE_IN_TEXT.search(title)
+        deals.append({
+            "key": f"insomnia:{link.rsplit('/topic/', 1)[-1].split('-', 1)[0]}",
+            "flag": "🇬🇷",
+            "where": "insomnia.gr",
+            "source": "προσφορές μελών",
+            "title": title,
+            "price": parse_money(price.group(1) or price.group(2)) if price else None,
+            "ref": None,
+            "cur": "€",
+            "price_error": bool(PRICE_ERROR.search(title)),
+            "url": link,
+            "local": True,
+            "curated": True,
+        })
+    return deals
+
+
 def camel_deals(session, name, cfg):
     flag, store, url = CAMEL_SITES[name]
     deals = []
@@ -284,6 +323,16 @@ def shop_terms(deal, cfg):
     return None
 
 
+def plain(text):
+    """Lowercase without accents, so "Ακουστικά", "ΑΚΟΥΣΤΙΚΑ" and "ακουστικα" match alike."""
+    return "".join(c for c in unicodedata.normalize("NFD", text.lower()) if not unicodedata.combining(c))
+
+
+def mentions(text, words):
+    text = plain(text)
+    return any(plain(w) in text for w in words)
+
+
 def matching_topic(deal, cfg):
     """Name of the chosen topic the deal fits, by its community category or else a word in its title."""
     if deal.get("topic"):  # Skroutz deals come from the category pages chosen in the config
@@ -291,29 +340,24 @@ def matching_topic(deal, cfg):
     for name, topic in cfg["topics"].items():
         if deal.get("category") in topic.get("categories", []):
             return name
-    title = deal["title"].lower()
     for name, topic in cfg["topics"].items():
-        if any(w.lower() in title for w in topic.get("words", [])):
+        if mentions(deal["title"], topic.get("words", [])):
             return name
     return None
 
 
 def has_known_brand(title, cfg):
     """Whether the title names one of the config's brands, as a whole word."""
-    return any(re.search(rf"(?<!\w){re.escape(b)}(?!\w)", title, re.IGNORECASE) for b in cfg["brands"])
+    return any(re.search(rf"(?<!\w){re.escape(plain(b))}(?!\w)", plain(title)) for b in cfg["brands"])
 
 
 def good_condition(title, cfg):
     """New items pass; used or refurbished ones only when the title says they are like new."""
-    title = title.lower()
-    if not any(w.lower() in title for w in cfg["used_words"]):
-        return True
-    return any(w.lower() in title for w in cfg["like_new_words"])
+    return not mentions(title, cfg["used_words"]) or mentions(title, cfg["like_new_words"])
 
 
 def is_big(deal, cfg):
-    text = f"{deal['title']} {deal['where']}".lower()
-    if any(w.lower() in text for w in cfg.get("exclude_words", [])):
+    if mentions(f"{deal['title']} {deal['where']}", cfg.get("exclude_words", [])):
         return False
     if not has_known_brand(deal["title"], cfg) or not good_condition(deal["title"], cfg):
         return False
@@ -327,7 +371,9 @@ def is_big(deal, cfg):
     if deal["forwarded"]:
         forwarding = cfg["forwarding"]
         delivery = forwarding["cost_eur"][forwarding["size"].get(deal["topic"], "small")]
-    deal["delivery"] = delivery if deal["price"] < deal["free_from"] else 0
+    deal["delivery"] = delivery if deal["price"] is not None and deal["price"] < deal["free_from"] else 0
+    if deal.get("curated"):
+        return True  # Greek community picks state no usual price: topic, brand and condition decide
     if deal["price_error"] and not deal["forwarded"]:  # forwarded orders arrive too late for price errors
         return True  # worth it even with a delivery fee, and too short-lived to wait for votes
     if deal.get("temperature", cfg["min_temperature"]) < cfg["min_temperature"]:
@@ -354,6 +400,8 @@ def format_deal(d):
     if d["ref"]:
         drop = round((1 - d["price"] / d["ref"]) * 100)
         head = f"🔥 <b>−{drop}%</b>  {fmt_price(d['price'], d['cur'])} (αντί {fmt_price(d['ref'], d['cur'])})"
+    elif d["price"] is None:
+        head = "🔥 <b>προσφορά</b>"
     else:
         head = f"🔥 <b>{fmt_price(d['price'], d['cur'])}</b>"
     if d["price"] == 0:
@@ -496,6 +544,8 @@ def main():
             continue
         if name == "skroutz":
             scan = skroutz_deals
+        elif name == "insomnia":
+            scan = insomnia_deals
         else:
             scan = pepper_deals if name in PEPPER_SITES else camel_deals
         try:

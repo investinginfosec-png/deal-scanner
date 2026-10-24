@@ -26,7 +26,8 @@
       "categories": ["gaming", "consoles-jeux-video", "consolas-y-videojuegos", "gry"],
       "words": [
         "PlayStation", "PS5", "Xbox", "Nintendo", "Steam Deck", "ROG Ally", "Legion Go",
-        "Meta Quest", "DualSense", "Gamepad", "Controller", "Gaming"
+        "Meta Quest", "DualSense", "Gamepad", "Controller", "Gaming",
+        "κονσόλα", "χειριστήριο", "Console"
       ]
     },
     "ενέργεια & σπίτι": {
@@ -35,7 +36,8 @@
       "words": [
         "Powerstation", "Power Station", "Solargenerator", "Balkonkraftwerk", "Solarmodul", "Wechselrichter",
         "Stromspeicher", "Batteriespeicher", "Klimaanlage", "Klimagerät", "Split-Klima", "Wärmepumpe",
-        "Thermostat", "Back-UPS", "Smart-UPS", "USV-Anlage", "Shelly", "Smart Home"
+        "Thermostat", "Back-UPS", "Smart-UPS", "USV-Anlage", "Shelly", "Smart Home",
+        "κλιματιστικ", "αντλία θερμότητας", "θερμοστάτ", "φωτοβολταϊκ", "power station", "inverter", "Air Conditioner", "Heat Pump", "Solar Panel"
       ]
     },
     "σπίτι & κουζίνα": {
@@ -51,7 +53,8 @@
         "Staubsauger", "Saugroboter", "Saugwischer", "Akkusauger", "Wischsauger", "Dyson", "Roborock",
         "Luftreiniger", "Luftentfeuchter", "Ventilator", "Heizlüfter", "Bügeleisen", "Dampfreiniger",
         "Waschmaschine", "Wäschetrockner", "Geschirrspüler", "Spülmaschine", "Kühlschrank",
-        "Gefrierschrank", "Matratze", "Bettdecke", "Kopfkissen"
+        "Gefrierschrank", "Matratze", "Bettdecke", "Kopfkissen",
+        "φριτέζα", "καφετιέρα", "μηχανή espresso", "παγωτομηχανή", "pop corn", "σκούπα", "πλυντήριο", "ψυγείο", "μπλέντερ", "βραστήρα", "τοστιέρα", "αφυγραντήρ", "ανεμιστήρ", "στρώμα", "Coffee Machine", "Ice Cream Maker", "Robot Vacuum", "Vacuum Cleaner", "Blender", "Kettle"
       ]
     },
     "ακουστικά & ηχεία": {
@@ -59,7 +62,8 @@
       "categories": [],
       "words": [
         "Kopfhörer", "Headphones", "Earbuds", "In-Ear", "Over-Ear", "AirPods", "WH-1000", "WF-1000",
-        "QuietComfort", "Galaxy Buds", "Pixel Buds", "Lautsprecher", "Speaker", "Partybox", "Boombox"
+        "QuietComfort", "Galaxy Buds", "Pixel Buds", "Lautsprecher", "Speaker", "Partybox", "Boombox",
+        "ακουστικά", "ηχείο", "ηχεία"
       ]
     },
     "δίκτυο & home server": {
@@ -69,7 +73,8 @@
         "Synology", "QNAP", "NAS-Server", "NAS Server", "NAS-System", "Netzwerkspeicher", "NASync",
         "FRITZ!Box", "FRITZ!Repeater", "Router", "Mesh-WLAN", "Mesh WLAN", "Mesh-System", "Repeater",
         "Access Point", "Netzwerk-Switch", "PoE-Switch", "Gigabit Switch", "Raspberry Pi",
-        "Mac mini", "Mini-PC", "Mini PC"
+        "Mac mini", "Mini-PC", "Mini PC",
+        "δρομολογητ", "mesh wifi"
       ]
     },
     "υπολογιστές (κομμάτια & περιφερειακά)": {
@@ -79,7 +84,8 @@
         "Gaming-PC", "Gaming PC", "Desktop-PC", "Grafikkarte", "GeForce", "RTX", "Radeon", "SSD", "NVMe",
         "Arbeitsspeicher", "DDR5", "Ryzen", "Core i5", "Core i7", "Core i9", "Core Ultra", "Mainboard",
         "Tastatur", "Keyboard", "Maus", "Mouse", "Webcam", "Dockingstation", "Drucker", "CPU",
-        "PC-Gehäuse", "Wasserkühlung", "ASUS ROG", "Corsair", "Logitech"
+        "PC-Gehäuse", "Wasserkühlung", "ASUS ROG", "Corsair", "Logitech",
+        "κάρτα γραφικών", "μνήμη ram", "πληκτρολόγιο", "ποντίκι", "εκτυπωτ", "επεξεργαστ", "μητρική"
       ]
     },
     "αυτοκίνητο & μπαγκαζιέρες": {
@@ -88,7 +94,8 @@
       "words": [
         "Dachbox", "Dachkoffer", "Skibox", "Dachträger", "Relingträger", "Grundträger", "roof box",
         "Fahrradträger", "Heckträger", "Kupplungsträger", "Dashcam", "Dash Cam", "Starthilfe",
-        "Autostaubsauger", "Auto-Staubsauger", "Reifendruck", "Kompressor"
+        "Autostaubsauger", "Auto-Staubsauger", "Reifendruck", "Kompressor",
+        "μπαγκαζιέρα", "σχάρα οροφής", "κάμερα αυτοκινήτου", "εκκινητ", "σκουπάκι αυτοκινήτου"
       ]
     },
     "γυμναστική & συμπληρώματα": {
@@ -96,7 +103,8 @@
       "categories": [],
       "words": [
         "Kreatin", "Creatin", "Whey", "Protein", "Hantel", "Kettlebell", "Hantelbank", "Trainingsbank",
-        "Klimmzug", "Laufband", "Rudergerät", "Crosstrainer", "Heimtrainer", "Spinningbike", "Indoor Bike"
+        "Klimmzug", "Laufband", "Rudergerät", "Crosstrainer", "Heimtrainer", "Spinningbike", "Indoor Bike",
+        "πρωτεΐν", "κρεατίν", "αλτήρ", "πάγκος γυμναστικής", "διάδρομος γυμναστικής"
       ]
     },
     "εργονομία γραφείου": {
@@ -104,7 +112,8 @@
       "categories": [],
       "words": [
         "Bürostuhl", "Schreibtischstuhl", "Ergonomischer Stuhl", "Stehschreibtisch", "Sitz-Steh",
-        "höhenverstellbarer Schreibtisch", "Höhenverstellbarer Schreibtisch", "Schreibtisch"
+        "höhenverstellbarer Schreibtisch", "Höhenverstellbarer Schreibtisch", "Schreibtisch",
+        "καρέκλα γραφείου", "ηλεκτρικό γραφείο", "standing desk", "Office Chair"
       ]
     },
     "χρήσιμα καθημερινά": {
@@ -113,7 +122,8 @@
       "words": [
         "Powerbank", "Ladegerät", "Ladestation", "Taschenlampe", "Stirnlampe", "Rucksack", "Reisekoffer",
         "Hartschalenkoffer", "Handgepäck", "Trolley", "Thermobecher", "Isolierflasche", "Personenwaage",
-        "Steckdosenleiste", "Smart Plug"
+        "Steckdosenleiste", "Smart Plug",
+        "φορτιστ", "φακός", "σακίδιο", "βαλίτσα", "ζυγαριά", "Charger", "Power Bank", "Backpack", "Suitcase", "Flashlight"
       ]
     }
   },
@@ -152,9 +162,9 @@
   ],
   "used_words": [
     "refurbished", "generalüberholt", "B-Ware", "gebraucht", "Warehouse", "renewed",
-    "Retoure", "reconditioned", "Vorführ"
+    "Retoure", "reconditioned", "Vorführ", "μεταχειρισμ", "ανακατασκευασμ"
   ],
-  "like_new_words": ["wie neu", "like new", "neuwertig", "hervorragend", "exzellent", "excellent", "Renewed Premium"],
+  "like_new_words": ["wie neu", "like new", "neuwertig", "hervorragend", "exzellent", "excellent", "Renewed Premium", "σαν καινούργιο", "άψογη", "άριστη κατάσταση"],
   "skroutz_categories": [
     "27/pc-hardware",
     "72/diktyaka",
@@ -178,19 +188,22 @@
     "2510/proteines",
     "2515/creatines"
   ],
-  "pepper_pages": 2,
+  "pepper_pages": 4,
+  "insomnia_days": 3,
   "exclude_words": [
     "SFP", "Transceiver", "Medienkonverter", "Media Converter",
     "Multimode", "Singlemode", "Patchpanel", "Patch Panel",
     "Serverschrank", "Netzwerkschrank", "Rackmount", "Rackmontage", "Hutschiene",
     "Monitor", "Bildschirm", "QD-OLED", "Laptop", "Notebook", "MacBook", "Chromebook",
-    "Fernseher", "Smart TV", "Smart-TV", "OLED TV", "OLED-TV", "QLED", "4K TV", "UHD TV", "Soundbar"
+    "Fernseher", "Smart TV", "Smart-TV", "OLED TV", "OLED-TV", "QLED", "4K TV", "UHD TV", "Soundbar",
+    "οθόνη", "τηλεόραση", "ηχομπάρα", "λάπτοπ", "φορητός υπολογιστής"
   ],
   "sources": {
     "skroutz": false,
     "mydealz": true,
     "preisjaeger": true,
     "camel_de": true,
+    "insomnia": true,
     "dealabs": false,
     "chollometro": false,
     "pepper_nl": false,

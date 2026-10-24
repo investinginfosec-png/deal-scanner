@@ -1,8 +1,9 @@
 # Deal scanner
 
 Checks European deal communities (mydealz, preisjaeger, dealabs, chollometro,
-pepper.nl, pepper.pl) and camelcamelcamel's Amazon price drops (DE, IT, ES, FR)
-every hour, keeps only deals far below their usual price, and sends them to Telegram.
+pepper.nl, pepper.pl), camelcamelcamel's Amazon price drops (DE, IT, ES, FR) and the
+offers insomnia.gr members post (Greek shops) every hour, keeps only deals far below
+their usual price, and sends them to Telegram. Words match without accents or case.
 
 - Settings: `config.json` (minimum drop, minimum saving, shops, topics, excluded words, sources).
   A deal is kept only if it fits one of the `topics`: by the community's category,
