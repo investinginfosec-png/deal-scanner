@@ -36,9 +36,11 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 
 # Deal communities (Pepper network). Each deal carries its price and the
 # cheapest price elsewhere ("nextBestPrice"), which we use as the usual price.
+# mydealz and preisjaeger are read from their "hot" lists (deals the community voted
+# over 100°), since only those can reach the config's min_temperature.
 PEPPER_SITES = {
-    "mydealz":     ("🇩🇪", "https://www.mydealz.de/new", "€"),
-    "preisjaeger": ("🇦🇹", "https://www.preisjaeger.at/neu", "€"),
+    "mydealz":     ("🇩🇪", "https://www.mydealz.de/hot", "€"),
+    "preisjaeger": ("🇦🇹", "https://www.preisjaeger.at/", "€"),
     "dealabs":     ("🇫🇷", "https://www.dealabs.com/nouveaux", "€"),
     "chollometro": ("🇪🇸", "https://www.chollometro.com/nuevos", "€"),
     "pepper_nl":   ("🇳🇱", "https://nl.pepper.com/nieuw", "€"),
@@ -137,6 +139,7 @@ def pepper_deals(session, name, cfg):
                 "visit_url": f"https://{urlsplit(url).netloc}/visit/threadmain/{th['threadId']}",
                 "shop_host": th.get("linkHost") or "",
                 "category": (th.get("mainGroup") or {}).get("threadGroupUrlName") or "",
+                "temperature": th.get("temperature") or 0,
             })
     return deals
 
@@ -257,9 +260,24 @@ def matching_topic(deal, cfg):
     return None
 
 
+def has_known_brand(title, cfg):
+    """Whether the title names one of the config's brands, as a whole word."""
+    return any(re.search(rf"(?<!\w){re.escape(b)}(?!\w)", title, re.IGNORECASE) for b in cfg["brands"])
+
+
+def good_condition(title, cfg):
+    """New items pass; used or refurbished ones only when the title says they are like new."""
+    title = title.lower()
+    if not any(w.lower() in title for w in cfg["used_words"]):
+        return True
+    return any(w.lower() in title for w in cfg["like_new_words"])
+
+
 def is_big(deal, cfg):
     text = f"{deal['title']} {deal['where']}".lower()
     if any(w.lower() in text for w in cfg.get("exclude_words", [])):
+        return False
+    if not has_known_brand(deal["title"], cfg) or not good_condition(deal["title"], cfg):
         return False
     free_from = free_delivery_from(deal, cfg)
     if free_from is None:
@@ -269,7 +287,9 @@ def is_big(deal, cfg):
     if not deal["topic"]:
         return False
     if deal["price_error"]:
-        return True  # worth it even with a delivery fee
+        return True  # worth it even with a delivery fee, and too short-lived to wait for votes
+    if deal.get("temperature", cfg["min_temperature"]) < cfg["min_temperature"]:
+        return False  # not (yet) approved by the community
     if not deal["ref"] or deal["price"] < free_from:
         return False
     if deal["ref"] * TO_EUR.get(deal["cur"], 1.0) < cfg["min_usual_price_eur"]:
@@ -299,8 +319,9 @@ def format_deal(d):
         links += f'\n<a href="{html.escape(d["extra_url"])}">{d["extra_label"]}</a>'
     delivery = f"\n🚚 δωρεάν αποστολή στην Ελλάδα (πάνω από {d['free_from']}€)" if d.get("free_from") else ""
     topic = f"\n🏷️ {html.escape(d['topic'], quote=False)}" if d.get("topic") else ""
+    votes = f" · {round(d['temperature'])}°" if d.get("temperature") else ""
     return (f"{head}\n{html.escape(d['title'][:160], quote=False)}\n"
-            f"{d['flag']} {html.escape(d['where'], quote=False)} · {d['source']}{delivery}{topic}\n{links}")
+            f"{d['flag']} {html.escape(d['where'], quote=False)} · {d['source']}{votes}{delivery}{topic}\n{links}")
 
 
 def telegram_call(token, method, http_timeout=30, **payload):

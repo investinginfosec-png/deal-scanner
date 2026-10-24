@@ -2,6 +2,7 @@
   "min_drop_percent": 30,
   "min_saving_eur": 10,
   "min_usual_price_eur": 80,
+  "min_temperature": 200,
   "shops": {
     "amazon.de": 59
   },
@@ -28,11 +29,10 @@
         "Kühlschrank", "Gefrierschrank", "Matratze", "Bettdecke", "Kopfkissen", "Thermostat", "Smart Home"
       ]
     },
-    "υπολογιστές & οθόνες": {
+    "υπολογιστές (κομμάτια & περιφερειακά)": {
       "categories": [],
       "words": [
-        "Monitor", "Bildschirm", "QD-OLED", "WQHD", "Curved", "Laptop", "Notebook", "MacBook", "Mac mini", "iMac", "Chromebook",
-        "Mini-PC", "Mini PC", "Gaming-PC", "Gaming PC", "Desktop-PC", "All-in-One", "Grafikkarte",
+        "Mac mini", "Mini-PC", "Mini PC", "Gaming-PC", "Gaming PC", "Desktop-PC", "Grafikkarte",
         "GeForce", "RTX", "Radeon", "SSD", "NVMe", "Arbeitsspeicher", "DDR5", "Ryzen", "Core i5",
         "Core i7", "Core i9", "Core Ultra", "Mainboard", "Tastatur", "Keyboard", "Maus", "Mouse",
         "Webcam", "Dockingstation", "Drucker", "Synology", "QNAP", "FRITZ!Box", "Router",
@@ -47,13 +47,39 @@
       "categories": [],
       "words": [
         "Powerbank", "Ladegerät", "Ladestation", "Taschenlampe", "Stirnlampe", "Rucksack", "Reisekoffer",
-        "Hartschalenkoffer", "Handgepäck", "Trolley", "Thermobecher", "Isolierflasche", "Personenwaage", "Steckdosenleiste", "Smart Plug"
+        "Hartschalenkoffer", "Handgepäck", "Trolley", "Thermobecher", "Isolierflasche", "Personenwaage",
+        "Steckdosenleiste", "Smart Plug"
       ]
     }
   },
+  "brands": [
+    "Sony", "PlayStation", "Microsoft", "Xbox", "Nintendo", "Valve", "Steam Deck", "Meta Quest",
+    "Logitech", "Razer", "SteelSeries", "HyperX", "Corsair", "ASUS", "MSI", "Gigabyte", "ASRock",
+    "Zotac", "Sapphire", "PowerColor", "XFX", "Palit", "Gainward", "PNY", "Nvidia", "AMD", "Intel",
+    "Samsung", "Western Digital", "WD", "Crucial", "Kingston", "G.Skill", "Lexar", "SanDisk", "Seagate",
+    "be quiet!", "Noctua", "Arctic", "Lian Li", "Fractal", "NZXT", "Cooler Master", "Thermaltake",
+    "Seasonic", "Keychron", "Cherry", "8BitDo", "Turtle Beach", "Thrustmaster", "Fanatec", "Elgato",
+    "Synology", "QNAP", "AVM", "FRITZ!Box", "TP-Link", "Netgear", "Ubiquiti", "Apple", "Lenovo",
+    "HP", "Brother", "Canon", "Epson", "Anker", "Ugreen", "Belkin",
+    "De'Longhi", "DeLonghi", "De Longhi", "Philips", "Siemens", "Bosch", "Miele", "AEG", "LG",
+    "Dyson", "iRobot", "Roborock", "Dreame", "Ecovacs", "Shark", "Tineco", "Xiaomi", "Kärcher",
+    "Vorwerk", "Thermomix", "Ninja", "Tefal", "Moulinex", "Rowenta", "Krups", "Braun", "Oral-B",
+    "KitchenAid", "Kenwood", "Smeg", "WMF", "Zwilling", "Fissler", "Le Creuset", "Russell Hobbs",
+    "Severin", "Unold", "Cuisinart", "Breville", "Sage", "Melitta", "Jura", "Nespresso", "SodaStream",
+    "Instant Pot", "Cosori", "Gastroback", "Graef", "Rommelsbacher", "Princess", "Leifheit", "Brita",
+    "Gorenje", "Beko", "Bauknecht", "Liebherr", "Haier", "Electrolux", "Neff", "Grundig",
+    "Philips Hue", "tado", "Netatmo", "Nuki", "Eufy", "Ring", "Arlo", "Emma", "Tempur", "Ikea",
+    "Thule", "Kamei", "Hapro", "Atera", "Menabo", "Westfalia",
+    "Samsonite", "Rimowa", "Eastpak", "Deuter", "Osprey", "Tatonka", "Fjällräven", "Ledlenser",
+    "Fenix", "Stanley", "Thermos", "Contigo", "Withings", "Varta", "Fischer", "Hama",
+    "ESGE", "Bamix", "Nitecore", "Olight", "Google", "EcoFlow", "Jackery", "Bluetti", "PS5"
+  ],
+  "used_words": [
+    "refurbished", "generalüberholt", "B-Ware", "gebraucht", "Warehouse", "renewed",
+    "Retoure", "reconditioned", "Vorführ"
+  ],
+  "like_new_words": ["wie neu", "like new", "neuwertig", "hervorragend", "exzellent", "excellent", "Renewed Premium"],
   "skroutz_categories": [
-    "22/hlektronikoi-ypologistes-pc",
-    "769/laptops-kai-accessories",
     "27/pc-hardware",
     "1864/Gaming",
     "54/oikiakes-syskeues",
@@ -66,7 +92,9 @@
   "exclude_words": [
     "SFP", "Transceiver", "Medienkonverter", "Media Converter",
     "Multimode", "Singlemode", "Patchpanel", "Patch Panel",
-    "Serverschrank", "Netzwerkschrank", "Rackmount", "Rackmontage", "Hutschiene"
+    "Serverschrank", "Netzwerkschrank", "Rackmount", "Rackmontage", "Hutschiene",
+    "Monitor", "Bildschirm", "QD-OLED", "Laptop", "Notebook", "MacBook", "Chromebook",
+    "Fernseher", "Smart TV", "Smart-TV", "OLED TV", "OLED-TV", "QLED", "4K TV", "UHD TV", "Soundbar"
   ],
   "sources": {
     "skroutz": false,

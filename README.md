@@ -7,6 +7,8 @@ every hour, keeps only deals far below their usual price, and sends them to Tele
 - Settings: `config.json` (minimum drop, minimum saving, shops, topics, excluded words, sources).
   A deal is kept only if it fits one of the `topics`: by the community's category,
   or by one of the topic's words in its title (camelcamelcamel has no categories).
+  It must also name a known brand, be new or like new, and on mydealz/preisjaeger
+  have at least `min_temperature` community votes (price errors don't wait for votes).
 - Telegram credentials are **not** in this repository. On GitHub they come from the
   `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` repository secrets; locally from
   `secrets.json` (ignored by git).
