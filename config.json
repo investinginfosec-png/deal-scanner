@@ -7,6 +7,19 @@
   "shops": {
     "amazon.de": {"free_from": 59, "delivery_eur": 12.48}
   },
+  "forwarding": {
+    "min_usual_price_eur": 150,
+    "cost_eur": {"small": 32, "medium": 45, "large": 110},
+    "size": {
+      "σπίτι & κουζίνα": "medium", "ενέργεια & σπίτι": "medium", "γυμναστική & συμπληρώματα": "medium",
+      "εργονομία γραφείου": "large", "αυτοκίνητο & μπαγκαζιέρες": "large"
+    },
+    "shops": [
+      "mediamarkt.de", "saturn.de", "otto.de", "alternate.de", "notebooksbilliger.de", "cyberport.de",
+      "galaxus.de", "proshop.de", "euronics.de", "expert.de", "conrad.de", "lidl.de", "kaufland.de",
+      "tink.de", "gastroback.de", "sharkninja.de", "aeg.de"
+    ]
+  },
   "topics": {
     "κονσόλες & gaming": {
       "min_usual_price_eur": 40,

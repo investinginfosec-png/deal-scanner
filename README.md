@@ -12,6 +12,10 @@ every hour, keeps only deals far below their usual price, and sends them to Tele
   posts in the `hot_tier` of votes need a smaller drop. Each topic can set its own
   `min_usual_price_eur`. Below a shop's free-delivery minimum the delivery fee is added
   to the price before the drop is checked.
+- `forwarding`: German shops that don't ship to Greece (MediaMarkt, Otto, …) are reachable
+  through a parcel forwarder (Forward2me, ColisExpat). Their deals count only for items
+  whose usual price is at least `min_usual_price_eur`, and the estimated forwarding cost
+  for the topic's parcel size is added before the drop is checked.
 - Each message shows the evidence: community votes and comments, record-low claims,
   a price-history link (Keepa) and a link to the product's price in Greece (Skroutz).
 - Telegram credentials are **not** in this repository. On GitHub they come from the

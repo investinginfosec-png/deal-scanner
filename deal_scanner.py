@@ -267,13 +267,20 @@ def unique_products(deals):
 
 
 def shop_terms(deal, cfg):
-    """(order value for free delivery to Greece, delivery fee below it) of the deal's shop; None if not allowed."""
+    """How the deal's shop reaches Greece: (order value for free delivery, delivery fee below it, forwarded).
+
+    German shops that don't ship to Greece go through a parcel forwarder, so their delivery
+    is never free and its fee depends on the parcel's size. None if the shop can't reach Greece.
+    """
     if deal.get("local"):
-        return 0, 0
+        return 0, 0, False
     host = deal.get("shop_host", "").lower().removeprefix("www.")
+    is_host = lambda domain: host == domain or host.endswith("." + domain)
     for domain, terms in cfg["shops"].items():
-        if host == domain or host.endswith("." + domain):
-            return terms["free_from"], terms["delivery_eur"]
+        if is_host(domain):
+            return terms["free_from"], terms["delivery_eur"], False
+    if any(is_host(domain) for domain in cfg["forwarding"]["shops"]):
+        return float("inf"), None, True
     return None
 
 
@@ -313,17 +320,22 @@ def is_big(deal, cfg):
     terms = shop_terms(deal, cfg)
     if terms is None:
         return False
-    deal["free_from"], delivery = terms  # both shown in the message
-    deal["delivery"] = delivery if deal["price"] < deal["free_from"] else 0
+    deal["free_from"], delivery, deal["forwarded"] = terms  # all shown in the message
     deal["topic"] = matching_topic(deal, cfg)
     if not deal["topic"]:
         return False
-    if deal["price_error"]:
+    if deal["forwarded"]:
+        forwarding = cfg["forwarding"]
+        delivery = forwarding["cost_eur"][forwarding["size"].get(deal["topic"], "small")]
+    deal["delivery"] = delivery if deal["price"] < deal["free_from"] else 0
+    if deal["price_error"] and not deal["forwarded"]:  # forwarded orders arrive too late for price errors
         return True  # worth it even with a delivery fee, and too short-lived to wait for votes
     if deal.get("temperature", cfg["min_temperature"]) < cfg["min_temperature"]:
         return False  # not (yet) approved by the community
     rate = TO_EUR.get(deal["cur"], 1.0)
     min_usual = cfg["topics"].get(deal["topic"], {}).get("min_usual_price_eur", cfg["min_usual_price_eur"])
+    if deal["forwarded"]:  # forwarding only pays off on expensive items
+        min_usual = max(min_usual, cfg["forwarding"]["min_usual_price_eur"])
     if not deal["ref"] or deal["ref"] * rate < min_usual:
         return False
     cost = deal["price"] + deal["delivery"] / rate  # the delivery fee eats into the discount
@@ -364,8 +376,14 @@ def format_deal(d):
         evidence += f" · {d['comments']} σχόλια" if d.get("comments") else ""
     if RECORD_LOW.search(d["title"]):
         evidence += "\n📉 χαμηλότερη τιμή μέχρι σήμερα, κατά τον αναρτήσαντα"
-    if d.get("delivery"):
-        delivery = (f"\n🚚 +≈{fmt_price(d['delivery'], '€')} μεταφορικά "
+    # the headline drop leaves out delivery, so state what remains after it
+    final = (f" · τελικά ≈ −{round((1 - (d['price'] + d['delivery']) / d['ref']) * 100)}%"
+             if d.get("delivery") and d["ref"] else "")
+    if d.get("forwarded"):
+        delivery = (f"\n📦 μόνο μέσω προώθησης από Γερμανία: +≈{fmt_price(d['delivery'], '€')}{final}, "
+                    f"1–2 εβδομάδες (Forward2me / ColisExpat)")
+    elif d.get("delivery"):
+        delivery = (f"\n🚚 +≈{fmt_price(d['delivery'], '€')} μεταφορικά{final} "
                     f"(δωρεάν αν η παραγγελία φτάσει {d['free_from']}€)")
     elif d.get("free_from"):
         delivery = f"\n🚚 δωρεάν αποστολή στην Ελλάδα (πάνω από {d['free_from']}€)"
