@@ -18,7 +18,11 @@
     "5532/tools-garden"
   ],
   "pepper_pages": 2,
-  "exclude_words": [],
+  "exclude_words": [
+    "SFP", "Transceiver", "Medienkonverter", "Media Converter",
+    "Multimode", "Singlemode", "Patchpanel", "Patch Panel",
+    "Serverschrank", "Netzwerkschrank", "Rackmount", "Rackmontage", "Hutschiene"
+  ],
   "sources": {
     "skroutz": false,
     "mydealz": true,
