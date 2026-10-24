@@ -20,7 +20,7 @@ import time
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote_plus, urlsplit
 
 import requests
 
@@ -77,6 +77,12 @@ PRICE_ERROR = re.compile(
     r"preisfehler|fehlerpreis|price error|prijsfout|error de precio|"
     r"erreur de prix|errore di prezzo|błąd cenowy",
     re.IGNORECASE)
+
+# Posters mark record lows in the title; shown as evidence, not used as a filter.
+RECORD_LOW = re.compile(r"bestpreis|tiefstpreis|allzeittief|all[- ]time[- ]low|niedrigster preis", re.IGNORECASE)
+
+AMAZON_ASIN = re.compile(r"amazon\.[a-z.]+/(?:[^/?]+/)?(?:dp|gp/product)/([A-Z0-9]{10})")
+AMAZON_SHORT_HOSTS = {"amzn.eu", "amzn.to"}
 
 
 def log(msg):
@@ -140,6 +146,7 @@ def pepper_deals(session, name, cfg):
                 "shop_host": th.get("linkHost") or "",
                 "category": (th.get("mainGroup") or {}).get("threadGroupUrlName") or "",
                 "temperature": th.get("temperature") or 0,
+                "comments": th.get("commentCount") or 0,
             })
     return deals
 
@@ -219,30 +226,54 @@ def skroutz_deals(session, name, cfg):
     return deals
 
 
+def redirect_target(session, url):
+    """Where a link redirects to, read from its Location header (not followed)."""
+    try:
+        return session.get(url, allow_redirects=False, timeout=30).headers.get("Location", "")
+    except requests.RequestException:
+        return ""
+
+
 def add_shop_links(session, deals):
     """Point community deals straight at the shop, read from the site's redirect (not followed)."""
     for d in deals:
         if "visit_url" not in d:
             continue
-        try:
-            target = session.get(d["visit_url"], allow_redirects=False, timeout=30).headers.get("Location", "")
-        except requests.RequestException:
-            continue
+        target = redirect_target(session, d.pop("visit_url"))
         shop = parse_qs(urlsplit(target).query).get("url", [target])[0]
+        if urlsplit(shop).netloc in AMAZON_SHORT_HOSTS:  # amzn.eu/… → amazon.de/dp/…
+            shop = redirect_target(session, shop) or shop
         if shop.startswith("http") and urlsplit(shop).netloc != urlsplit(d["url"]).netloc:
             d["extra_url"], d["extra_label"] = d["url"], "💬 σελίδα προσφοράς"
             d["url"] = shop
         time.sleep(1)
 
 
-def free_delivery_from(deal, cfg):
-    """Price from which the deal's shop delivers free to Greece; None if the shop isn't allowed."""
+def resolve_short_shops(session, deals):
+    """Amazon short links hide which Amazon sells the deal, so look it up before filtering."""
+    short = [d for d in deals if d.get("shop_host") in AMAZON_SHORT_HOSTS]
+    add_shop_links(session, short)
+    for d in short:
+        d["shop_host"] = urlsplit(d["url"]).netloc
+
+
+def unique_products(deals):
+    """One message per product when several communities post it; the most voted post is kept."""
+    kept = {}
+    for d in sorted(deals, key=lambda d: -d.get("temperature", 0)):
+        asin = AMAZON_ASIN.search(d["url"])
+        kept.setdefault(asin.group(1) if asin else " ".join(d["title"].lower().split()[:3]), d)
+    return [d for d in deals if any(d is k for k in kept.values())]
+
+
+def shop_terms(deal, cfg):
+    """(order value for free delivery to Greece, delivery fee below it) of the deal's shop; None if not allowed."""
     if deal.get("local"):
-        return 0
+        return 0, 0
     host = deal.get("shop_host", "").lower().removeprefix("www.")
-    for domain, min_price in cfg["shops"].items():
+    for domain, terms in cfg["shops"].items():
         if host == domain or host.endswith("." + domain):
-            return min_price
+            return terms["free_from"], terms["delivery_eur"]
     return None
 
 
@@ -279,10 +310,11 @@ def is_big(deal, cfg):
         return False
     if not has_known_brand(deal["title"], cfg) or not good_condition(deal["title"], cfg):
         return False
-    free_from = free_delivery_from(deal, cfg)
-    if free_from is None:
+    terms = shop_terms(deal, cfg)
+    if terms is None:
         return False
-    deal["free_from"] = free_from  # shown in the message
+    deal["free_from"], delivery = terms  # both shown in the message
+    deal["delivery"] = delivery if deal["price"] < deal["free_from"] else 0
     deal["topic"] = matching_topic(deal, cfg)
     if not deal["topic"]:
         return False
@@ -290,13 +322,16 @@ def is_big(deal, cfg):
         return True  # worth it even with a delivery fee, and too short-lived to wait for votes
     if deal.get("temperature", cfg["min_temperature"]) < cfg["min_temperature"]:
         return False  # not (yet) approved by the community
-    if not deal["ref"] or deal["price"] < free_from:
+    rate = TO_EUR.get(deal["cur"], 1.0)
+    min_usual = cfg["topics"].get(deal["topic"], {}).get("min_usual_price_eur", cfg["min_usual_price_eur"])
+    if not deal["ref"] or deal["ref"] * rate < min_usual:
         return False
-    if deal["ref"] * TO_EUR.get(deal["cur"], 1.0) < cfg["min_usual_price_eur"]:
-        return False
-    drop = 1 - deal["price"] / deal["ref"]
-    saving_eur = (deal["ref"] - deal["price"]) * TO_EUR.get(deal["cur"], 1.0)
-    return drop * 100 >= cfg["min_drop_percent"] and saving_eur >= cfg["min_saving_eur"]
+    cost = deal["price"] + deal["delivery"] / rate  # the delivery fee eats into the discount
+    drop = 1 - cost / deal["ref"]
+    saving_eur = (deal["ref"] - cost) * rate
+    # posts hundreds vote for are often record lows even when other shops are only a bit dearer
+    tier = cfg["hot_tier"] if deal.get("temperature", 0) >= cfg["hot_tier"]["min_temperature"] else cfg
+    return drop * 100 >= tier["min_drop_percent"] and saving_eur >= cfg["min_saving_eur"]
 
 
 def fmt_price(value, cur):
@@ -317,11 +352,28 @@ def format_deal(d):
     links = f'🛒 <a href="{html.escape(d["url"])}">{html.escape(host)}</a>'
     if d.get("extra_url"):
         links += f'\n<a href="{html.escape(d["extra_url"])}">{d["extra_label"]}</a>'
-    delivery = f"\n🚚 δωρεάν αποστολή στην Ελλάδα (πάνω από {d['free_from']}€)" if d.get("free_from") else ""
+    asin = AMAZON_ASIN.search(d["url"])
+    if asin and "camelcamelcamel" not in d.get("extra_url", ""):
+        links += f'\n<a href="https://keepa.com/#!product/3-{asin.group(1)}">📈 ιστορικό τιμής</a>'
+    if not d.get("local"):  # what it costs in Greece, to judge the deal and the resale price
+        name = " ".join(re.sub(r"[\[\(].*?[\]\)]", " ", d["title"]).split()[:6])
+        links += f'\n<a href="https://www.skroutz.gr/search?keyphrase={quote_plus(name)}">🇬🇷 τιμή στην Ελλάδα</a>'
+    evidence = ""
+    if d.get("temperature"):
+        evidence += f"\n👍 {round(d['temperature'])}° στο {d['source']}"
+        evidence += f" · {d['comments']} σχόλια" if d.get("comments") else ""
+    if RECORD_LOW.search(d["title"]):
+        evidence += "\n📉 χαμηλότερη τιμή μέχρι σήμερα, κατά τον αναρτήσαντα"
+    if d.get("delivery"):
+        delivery = (f"\n🚚 +≈{fmt_price(d['delivery'], '€')} μεταφορικά "
+                    f"(δωρεάν αν η παραγγελία φτάσει {d['free_from']}€)")
+    elif d.get("free_from"):
+        delivery = f"\n🚚 δωρεάν αποστολή στην Ελλάδα (πάνω από {d['free_from']}€)"
+    else:
+        delivery = ""
     topic = f"\n🏷️ {html.escape(d['topic'], quote=False)}" if d.get("topic") else ""
-    votes = f" · {round(d['temperature'])}°" if d.get("temperature") else ""
     return (f"{head}\n{html.escape(d['title'][:160], quote=False)}\n"
-            f"{d['flag']} {html.escape(d['where'], quote=False)} · {d['source']}{votes}{delivery}{topic}\n{links}")
+            f"{d['flag']} {html.escape(d['where'], quote=False)} · {d['source']}{evidence}{delivery}{topic}\n{links}")
 
 
 def telegram_call(token, method, http_timeout=30, **payload):
@@ -433,6 +485,7 @@ def main():
         except Exception as e:  # one broken source must not stop the others
             log(f"{name}: σφάλμα {e.__class__.__name__}: {e}")
             continue
+        resolve_short_shops(session, deals)
         big = [d for d in deals if is_big(d, cfg)]
         counts.append(f"{name} {len(big)}/{len(deals)}")
         found.extend(big)
@@ -443,11 +496,12 @@ def main():
             keys.add(d["key"])
             new.append(d)
     new.sort(key=lambda d: (not d["price_error"], d["price"] / d["ref"] if d["ref"] else 1))
-    log(f"έλεγχος: {', '.join(counts)} -> {len(new)} νέες")
     add_shop_links(session, new)
+    to_send = unique_products(new)  # the duplicates are still remembered as seen below
+    log(f"έλεγχος: {', '.join(counts)} -> {len(to_send)} νέες")
 
     if args.dry_run:
-        for d in new:
+        for d in to_send:
             text = re.sub(r'<a href="([^"]*)">(.*?)</a>', r"\2 \1", format_deal(d))
             print("\n" + re.sub(r"</?b>", "", text))
         return 0
@@ -455,7 +509,7 @@ def main():
         return 0
 
     if telegram_ready(cfg):
-        send_deals(cfg, new)
+        send_deals(cfg, to_send)
     else:
         log("Το Telegram δεν έχει ρυθμιστεί ακόμα· οι προσφορές γράφτηκαν μόνο στο found_deals.csv")
 
@@ -468,7 +522,7 @@ def main():
         w = csv.writer(f)
         if write_header:
             w.writerow(["time", "drop_%", "price", "usual_price", "currency", "title", "store", "url"])
-        for d in new:
+        for d in to_send:
             drop = round((1 - d["price"] / d["ref"]) * 100) if d["ref"] else ""
             w.writerow([datetime.now().strftime("%Y-%m-%d %H:%M"), drop, d["price"],
                         d["ref"] or "", d["cur"], d["title"], d["where"], d["url"]])

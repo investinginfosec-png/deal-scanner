@@ -8,7 +8,12 @@ every hour, keeps only deals far below their usual price, and sends them to Tele
   A deal is kept only if it fits one of the `topics`: by the community's category,
   or by one of the topic's words in its title (camelcamelcamel has no categories).
   It must also name a known brand, be new or like new, and on mydealz/preisjaeger
-  have at least `min_temperature` community votes (price errors don't wait for votes).
+  have at least `min_temperature` community votes (price errors don't wait for votes);
+  posts in the `hot_tier` of votes need a smaller drop. Each topic can set its own
+  `min_usual_price_eur`. Below a shop's free-delivery minimum the delivery fee is added
+  to the price before the drop is checked.
+- Each message shows the evidence: community votes and comments, record-low claims,
+  a price-history link (Keepa) and a link to the product's price in Greece (Skroutz).
 - Telegram credentials are **not** in this repository. On GitHub they come from the
   `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` repository secrets; locally from
   `secrets.json` (ignored by git).

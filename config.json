@@ -3,11 +3,13 @@
   "min_saving_eur": 10,
   "min_usual_price_eur": 80,
   "min_temperature": 200,
+  "hot_tier": {"min_temperature": 300, "min_drop_percent": 15},
   "shops": {
-    "amazon.de": 59
+    "amazon.de": {"free_from": 59, "delivery_eur": 12.48}
   },
   "topics": {
     "κονσόλες & gaming": {
+      "min_usual_price_eur": 40,
       "categories": ["gaming", "consoles-jeux-video", "consolas-y-videojuegos", "gry"],
       "words": [
         "PlayStation", "PS5", "Xbox", "Nintendo", "Steam Deck", "ROG Ally", "Legion Go",
@@ -15,6 +17,7 @@
       ]
     },
     "ενέργεια & σπίτι": {
+      "min_usual_price_eur": 60,
       "categories": [],
       "words": [
         "Powerstation", "Power Station", "Solargenerator", "Balkonkraftwerk", "Solarmodul", "Wechselrichter",
@@ -23,6 +26,7 @@
       ]
     },
     "σπίτι & κουζίνα": {
+      "min_usual_price_eur": 40,
       "categories": ["home-living", "maison-habitat", "hogar-y-jardin", "wonen", "dom-i-mieszkanie", "dom"],
       "words": [
         "Eismaschine", "Ninja Creami", "Popcorn", "Heißluftfritteuse", "Heissluftfritteuse", "Airfryer",
@@ -38,6 +42,7 @@
       ]
     },
     "ακουστικά & ηχεία": {
+      "min_usual_price_eur": 50,
       "categories": [],
       "words": [
         "Kopfhörer", "Headphones", "Earbuds", "In-Ear", "Over-Ear", "AirPods", "WH-1000", "WF-1000",
@@ -45,6 +50,7 @@
       ]
     },
     "δίκτυο & home server": {
+      "min_usual_price_eur": 50,
       "categories": [],
       "words": [
         "Synology", "QNAP", "NAS-Server", "NAS Server", "NAS-System", "Netzwerkspeicher", "NASync",
@@ -54,6 +60,7 @@
       ]
     },
     "υπολογιστές (κομμάτια & περιφερειακά)": {
+      "min_usual_price_eur": 50,
       "categories": [],
       "words": [
         "Gaming-PC", "Gaming PC", "Desktop-PC", "Grafikkarte", "GeForce", "RTX", "Radeon", "SSD", "NVMe",
@@ -63,6 +70,7 @@
       ]
     },
     "αυτοκίνητο & μπαγκαζιέρες": {
+      "min_usual_price_eur": 40,
       "categories": ["auto-motorrad"],
       "words": [
         "Dachbox", "Dachkoffer", "Skibox", "Dachträger", "Relingträger", "Grundträger", "roof box",
@@ -71,6 +79,7 @@
       ]
     },
     "γυμναστική & συμπληρώματα": {
+      "min_usual_price_eur": 25,
       "categories": [],
       "words": [
         "Kreatin", "Creatin", "Whey", "Protein", "Hantel", "Kettlebell", "Hantelbank", "Trainingsbank",
@@ -78,6 +87,7 @@
       ]
     },
     "εργονομία γραφείου": {
+      "min_usual_price_eur": 80,
       "categories": [],
       "words": [
         "Bürostuhl", "Schreibtischstuhl", "Ergonomischer Stuhl", "Stehschreibtisch", "Sitz-Steh",
@@ -85,6 +95,7 @@
       ]
     },
     "χρήσιμα καθημερινά": {
+      "min_usual_price_eur": 30,
       "categories": [],
       "words": [
         "Powerbank", "Ladegerät", "Ladestation", "Taschenlampe", "Stirnlampe", "Rucksack", "Reisekoffer",
