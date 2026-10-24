@@ -14,6 +14,14 @@
         "Meta Quest", "DualSense", "Gamepad", "Controller", "Gaming"
       ]
     },
+    "ενέργεια & σπίτι": {
+      "categories": [],
+      "words": [
+        "Powerstation", "Power Station", "Solargenerator", "Balkonkraftwerk", "Solarmodul", "Wechselrichter",
+        "Stromspeicher", "Batteriespeicher", "Klimaanlage", "Klimagerät", "Split-Klima", "Wärmepumpe",
+        "Thermostat", "Back-UPS", "Smart-UPS", "USV-Anlage", "Shelly", "Smart Home"
+      ]
+    },
     "σπίτι & κουζίνα": {
       "categories": ["home-living", "maison-habitat", "hogar-y-jardin", "wonen", "dom-i-mieszkanie", "dom"],
       "words": [
@@ -24,24 +32,57 @@
         "Kontaktgrill", "Raclette", "Sous Vide", "Dörrautomat", "Brotbackautomat", "Entsafter",
         "Mikrowelle", "Kochfeld", "Topfset", "Pfannenset", "Messerset", "SodaStream", "Wassersprudler",
         "Staubsauger", "Saugroboter", "Saugwischer", "Akkusauger", "Wischsauger", "Dyson", "Roborock",
-        "Luftreiniger", "Luftentfeuchter", "Ventilator", "Heizlüfter", "Klimagerät", "Bügeleisen",
-        "Dampfreiniger", "Waschmaschine", "Wäschetrockner", "Geschirrspüler", "Spülmaschine",
-        "Kühlschrank", "Gefrierschrank", "Matratze", "Bettdecke", "Kopfkissen", "Thermostat", "Smart Home"
+        "Luftreiniger", "Luftentfeuchter", "Ventilator", "Heizlüfter", "Bügeleisen", "Dampfreiniger",
+        "Waschmaschine", "Wäschetrockner", "Geschirrspüler", "Spülmaschine", "Kühlschrank",
+        "Gefrierschrank", "Matratze", "Bettdecke", "Kopfkissen"
+      ]
+    },
+    "ακουστικά & ηχεία": {
+      "categories": [],
+      "words": [
+        "Kopfhörer", "Headphones", "Earbuds", "In-Ear", "Over-Ear", "AirPods", "WH-1000", "WF-1000",
+        "QuietComfort", "Galaxy Buds", "Pixel Buds", "Lautsprecher", "Speaker", "Partybox", "Boombox"
+      ]
+    },
+    "δίκτυο & home server": {
+      "categories": [],
+      "words": [
+        "Synology", "QNAP", "NAS-Server", "NAS Server", "NAS-System", "Netzwerkspeicher", "NASync",
+        "FRITZ!Box", "FRITZ!Repeater", "Router", "Mesh-WLAN", "Mesh WLAN", "Mesh-System", "Repeater",
+        "Access Point", "Netzwerk-Switch", "PoE-Switch", "Gigabit Switch", "Raspberry Pi",
+        "Mac mini", "Mini-PC", "Mini PC"
       ]
     },
     "υπολογιστές (κομμάτια & περιφερειακά)": {
       "categories": [],
       "words": [
-        "Mac mini", "Mini-PC", "Mini PC", "Gaming-PC", "Gaming PC", "Desktop-PC", "Grafikkarte",
-        "GeForce", "RTX", "Radeon", "SSD", "NVMe", "Arbeitsspeicher", "DDR5", "Ryzen", "Core i5",
-        "Core i7", "Core i9", "Core Ultra", "Mainboard", "Tastatur", "Keyboard", "Maus", "Mouse",
-        "Webcam", "Dockingstation", "Drucker", "Synology", "QNAP", "FRITZ!Box", "Router",
-        "CPU", "PC-Gehäuse", "Wasserkühlung", "ASUS ROG", "Corsair", "Logitech"
+        "Gaming-PC", "Gaming PC", "Desktop-PC", "Grafikkarte", "GeForce", "RTX", "Radeon", "SSD", "NVMe",
+        "Arbeitsspeicher", "DDR5", "Ryzen", "Core i5", "Core i7", "Core i9", "Core Ultra", "Mainboard",
+        "Tastatur", "Keyboard", "Maus", "Mouse", "Webcam", "Dockingstation", "Drucker", "CPU",
+        "PC-Gehäuse", "Wasserkühlung", "ASUS ROG", "Corsair", "Logitech"
       ]
     },
-    "μπαγκαζιέρα οροφής": {
+    "αυτοκίνητο & μπαγκαζιέρες": {
+      "categories": ["auto-motorrad"],
+      "words": [
+        "Dachbox", "Dachkoffer", "Skibox", "Dachträger", "Relingträger", "Grundträger", "roof box",
+        "Fahrradträger", "Heckträger", "Kupplungsträger", "Dashcam", "Dash Cam", "Starthilfe",
+        "Autostaubsauger", "Auto-Staubsauger", "Reifendruck", "Kompressor"
+      ]
+    },
+    "γυμναστική & συμπληρώματα": {
       "categories": [],
-      "words": ["Dachbox", "Dachkoffer", "Skibox", "Dachträger", "Relingträger", "Grundträger", "roof box"]
+      "words": [
+        "Kreatin", "Creatin", "Whey", "Protein", "Hantel", "Kettlebell", "Hantelbank", "Trainingsbank",
+        "Klimmzug", "Laufband", "Rudergerät", "Crosstrainer", "Heimtrainer", "Spinningbike", "Indoor Bike"
+      ]
+    },
+    "εργονομία γραφείου": {
+      "categories": [],
+      "words": [
+        "Bürostuhl", "Schreibtischstuhl", "Ergonomischer Stuhl", "Stehschreibtisch", "Sitz-Steh",
+        "höhenverstellbarer Schreibtisch", "Höhenverstellbarer Schreibtisch", "Schreibtisch"
+      ]
     },
     "χρήσιμα καθημερινά": {
       "categories": [],
@@ -53,26 +94,37 @@
     }
   },
   "brands": [
-    "Sony", "PlayStation", "Microsoft", "Xbox", "Nintendo", "Valve", "Steam Deck", "Meta Quest",
+    "Sony", "PlayStation", "Microsoft", "Xbox", "Nintendo", "Valve", "Steam Deck", "Meta Quest", "PS5",
     "Logitech", "Razer", "SteelSeries", "HyperX", "Corsair", "ASUS", "MSI", "Gigabyte", "ASRock",
     "Zotac", "Sapphire", "PowerColor", "XFX", "Palit", "Gainward", "PNY", "Nvidia", "AMD", "Intel",
     "Samsung", "Western Digital", "WD", "Crucial", "Kingston", "G.Skill", "Lexar", "SanDisk", "Seagate",
     "be quiet!", "Noctua", "Arctic", "Lian Li", "Fractal", "NZXT", "Cooler Master", "Thermaltake",
     "Seasonic", "Keychron", "Cherry", "8BitDo", "Turtle Beach", "Thrustmaster", "Fanatec", "Elgato",
-    "Synology", "QNAP", "AVM", "FRITZ!Box", "TP-Link", "Netgear", "Ubiquiti", "Apple", "Lenovo",
-    "HP", "Brother", "Canon", "Epson", "Anker", "Ugreen", "Belkin",
+    "Apple", "Lenovo", "HP", "Brother", "Canon", "Epson", "Anker", "Ugreen", "Belkin", "Google",
+    "Synology", "QNAP", "AVM", "FRITZ!Box", "TP-Link", "Netgear", "Ubiquiti", "Eero", "Linksys",
+    "Zyxel", "MikroTik", "Raspberry Pi", "Minisforum", "Beelink",
+    "Bose", "JBL", "Sennheiser", "Marshall", "Beats", "Teufel", "Bang & Olufsen", "Ultimate Ears",
+    "Sonos", "Jabra", "Shure", "Audio-Technica", "Beyerdynamic", "AKG", "Nothing", "Soundcore",
+    "Bowers & Wilkins", "KEF", "Klipsch", "Harman Kardon", "Denon", "Yamaha", "Edifier",
+    "EcoFlow", "Jackery", "Bluetti", "Zendure", "Growatt", "Hoymiles", "APC", "Eaton", "CyberPower",
+    "Daikin", "Mitsubishi", "Fujitsu", "Toshiba", "Midea", "Gree", "Inventor", "Panasonic", "Shelly",
+    "Homematic", "Viessmann", "Vaillant", "Ariston", "Trina", "Jinko", "JA Solar",
     "De'Longhi", "DeLonghi", "De Longhi", "Philips", "Siemens", "Bosch", "Miele", "AEG", "LG",
     "Dyson", "iRobot", "Roborock", "Dreame", "Ecovacs", "Shark", "Tineco", "Xiaomi", "Kärcher",
     "Vorwerk", "Thermomix", "Ninja", "Tefal", "Moulinex", "Rowenta", "Krups", "Braun", "Oral-B",
     "KitchenAid", "Kenwood", "Smeg", "WMF", "Zwilling", "Fissler", "Le Creuset", "Russell Hobbs",
     "Severin", "Unold", "Cuisinart", "Breville", "Sage", "Melitta", "Jura", "Nespresso", "SodaStream",
     "Instant Pot", "Cosori", "Gastroback", "Graef", "Rommelsbacher", "Princess", "Leifheit", "Brita",
-    "Gorenje", "Beko", "Bauknecht", "Liebherr", "Haier", "Electrolux", "Neff", "Grundig",
+    "ESGE", "Bamix", "Gorenje", "Beko", "Bauknecht", "Liebherr", "Haier", "Electrolux", "Neff", "Grundig",
     "Philips Hue", "tado", "Netatmo", "Nuki", "Eufy", "Ring", "Arlo", "Emma", "Tempur", "Ikea",
-    "Thule", "Kamei", "Hapro", "Atera", "Menabo", "Westfalia",
+    "Thule", "Kamei", "Hapro", "Atera", "Menabo", "Westfalia", "Uebler", "Garmin", "Nextbase",
+    "Vantrue", "70mai", "Viofo", "NOCO", "Osram", "Michelin", "Continental",
+    "Biotech", "ESN", "Optimum Nutrition", "Myprotein", "Foodspring", "More Nutrition", "Olimp",
+    "Scitec", "Bulk", "Kettler", "Hammer", "Sportstech", "Capital Sports", "Gorilla Sports", "Concept2",
+    "Bowflex", "Steelcase", "Herman Miller", "Haworth", "Humanscale", "HÅG", "Flexispot", "Secretlab",
+    "noblechairs", "Interstuhl", "Topstar", "Sihoo",
     "Samsonite", "Rimowa", "Eastpak", "Deuter", "Osprey", "Tatonka", "Fjällräven", "Ledlenser",
-    "Fenix", "Stanley", "Thermos", "Contigo", "Withings", "Varta", "Fischer", "Hama",
-    "ESGE", "Bamix", "Nitecore", "Olight", "Google", "EcoFlow", "Jackery", "Bluetti", "PS5"
+    "Nitecore", "Olight", "Fenix", "Stanley", "Thermos", "Contigo", "Withings", "Varta", "Fischer", "Hama"
   ],
   "used_words": [
     "refurbished", "generalüberholt", "B-Ware", "gebraucht", "Warehouse", "renewed",
@@ -81,12 +133,26 @@
   "like_new_words": ["wie neu", "like new", "neuwertig", "hervorragend", "exzellent", "excellent", "Renewed Premium"],
   "skroutz_categories": [
     "27/pc-hardware",
+    "72/diktyaka",
+    "2538/mini-pc",
     "1864/Gaming",
+    "772/akoystika",
+    "3054/hxeia",
     "54/oikiakes-syskeues",
     "1271/mikrosyskeves-proinou-snak",
     "4154/oikiakes-syskeves-mageirematos",
+    "1702/Air_Condition",
+    "5048/power-stations",
+    "265/ups-and-aksesouar",
+    "1194/temperature_control",
     "11/home-garden",
-    "6314/sxares-bagazieres"
+    "1110/Epipla_Grafeiou",
+    "3413/aksesouar_kabinas",
+    "3420/ergaleia-autokinitou",
+    "6314/sxares-bagazieres",
+    "256/organa-gymnastikhs",
+    "2510/proteines",
+    "2515/creatines"
   ],
   "pepper_pages": 2,
   "exclude_words": [
