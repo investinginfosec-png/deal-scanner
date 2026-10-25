@@ -1,9 +1,11 @@
 # Deal scanner
 
-Checks European deal communities (mydealz, preisjaeger, dealabs, chollometro,
-pepper.nl, pepper.pl), camelcamelcamel's Amazon price drops (DE, IT, ES, FR) and the
-offers insomnia.gr members post (Greek shops) every hour, keeps only deals far below
-their usual price, and sends them to Telegram. Words match without accents or case.
+Checks the voted ("hot") deals on mydealz and preisjaeger and camelcamelcamel's Amazon.de
+price drops twice an hour on GitHub, keeps only deals far below their usual price that
+can reach Greece, and sends them to Telegram. Words match without accents or case.
+Other communities (dealabs, chollometro, pepper.nl, pepper.pl), other Amazons (IT, ES, FR)
+and insomnia.gr offers can be switched on in `sources`; insomnia.gr refuses GitHub's
+servers, so its offers reach Telegram through forum email notifications instead.
 
 - Settings: `config.json` (minimum drop, minimum saving, shops, topics, excluded words, sources).
   A deal is kept only if it fits one of the `topics`: by the community's category,
@@ -19,9 +21,17 @@ their usual price, and sends them to Telegram. Words match without accents or ca
   for the topic's parcel size is added before the drop is checked.
 - Each message shows the evidence: community votes and comments, record-low claims,
   a price-history link (Keepa) and a link to the product's price in Greece (Skroutz).
+- Once a day, on the first run after `daily_status_utc_hour` (UTC), a short status message
+  says how many runs GitHub made and deals passed in the last 24 hours, and flags a source
+  that failed or found nothing, so a quiet day can be told apart from a broken scanner.
+- Skroutz isn't scanned (it refuses scripts and GitHub's servers); `skroutz_categories` lists
+  the categories checked on request in a browser.
 - Telegram credentials are **not** in this repository. On GitHub they come from the
   `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` repository secrets; locally from
   `secrets.json` (ignored by git).
-- `seen.json` remembers which deals were already sent; `found_deals.csv` is the history.
+- `seen.json` remembers which deals were already sent; `found_deals.csv` is the history;
+  `status.json` is the day of the last status message. It changes daily, so the run commits
+  daily, which keeps GitHub from pausing the schedule (it does after 60 days without commits).
 
 Run locally: `python deal_scanner.py --dry-run` (prints only) or `python deal_scanner.py`.
+Check the filters: `python -m unittest -v test_deal_scanner` (GitHub runs this before every scan).

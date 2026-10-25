@@ -31,6 +31,7 @@ CONFIG = HERE / "config.json"
 SECRETS = HERE / "secrets.json"  # local only, listed in .gitignore
 STATE = HERE / "seen.json"
 FOUND_LOG = HERE / "found_deals.csv"
+STATUS = HERE / "status.json"  # the day the last daily status message was sent
 RUN_LOG = HERE / "scanner.log"
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -59,11 +60,8 @@ CAMEL_SITES = {
 }
 CAMEL_LISTS = ["", "?t=daily"]
 
-# Skroutz (Greek shops): its deals pages list products whose price dropped, with the
-# previous price struck through. The categories to check come from config.json.
-# Skroutz blocks IPs that send many requests, so each run fetches one page per category,
-# alternating hourly between the newest drops and the biggest drops.
-SKROUTZ_ORDERS = ["newest", "discount_percentage"]
+# Skroutz isn't scanned: it refuses scripts and GitHub's servers (HTTP 403). Its deals are
+# checked on request in a browser, from the config's skroutz_categories.
 
 TO_EUR = {"€": 1.0, "zł": 0.23}
 
@@ -100,8 +98,8 @@ def fetch(session, url):
         time.sleep(60)
         r = session.get(url, timeout=30)
     r.raise_for_status()
-    # be polite between requests; camelcamelcamel and Skroutz block bursts of requests
-    time.sleep(15 if "camelcamelcamel" in url else 8 if "skroutz" in url else 3)
+    # be polite between requests; camelcamelcamel blocks bursts of requests
+    time.sleep(15 if "camelcamelcamel" in url else 3)
     return r.text
 
 
@@ -227,44 +225,6 @@ def camel_deals(session, name, cfg):
     return deals
 
 
-def skroutz_deals(session, name, cfg):
-    deals = []
-    order = SKROUTZ_ORDERS[datetime.now().hour % len(SKROUTZ_ORDERS)]
-    for path in cfg["skroutz_categories"]:
-        page_html = fetch(session, f"https://www.skroutz.gr/deals/c/{path}?order_by={order}&order_dir=desc")
-        for card in page_html.split('data-testid="sku-cardd"')[1:]:
-            badge = re.search(r'<span>-\d+%</span></span><span class="secondary-text">([^<]+)<', card)
-            if not badge or badge.group(1) != "πτώση τιμής":  # skip multi-buy, Plus-only, expiring stock
-                continue
-            title = re.search(r'title="([^"]+)" data-testid="sku-title-link"', card)
-            link = re.search(r'href="(/s/\d+/[^"?]+)', card)
-            before = re.search(r"<strike>([\d.,]+)\s*€</strike>", card)
-            now = re.search(r'sku-price-link"[^>]*>(?:<span>[^<]*</span>)?([\d.,]+)\s*€', card)
-            if not (title and link and before and now):
-                continue
-            price, ref = parse_money(now.group(1)), parse_money(before.group(1))
-            if not price or not ref or ref <= price:
-                continue
-            category = re.search(r'class="category-name"[^>]*>([^<]+)<', card)
-            shops = re.search(r"σε (\d+) καταστήματα", card)
-            deals.append({
-                "key": f"skroutz:{link.group(1).split('/')[2]}:{price}",
-                "flag": "🇬🇷",
-                "where": html.unescape(category.group(1)) if category else "Skroutz",
-                "source": "skroutz" + (f" · σε {shops.group(1)} καταστήματα" if shops else ""),
-                "title": html.unescape(title.group(1)),
-                "price": price,
-                "ref": ref,
-                "cur": "€",
-                "price_error": False,
-                "url": "https://www.skroutz.gr" + link.group(1),
-                "shop_host": "skroutz.gr",
-                "local": True,
-                "topic": "Skroutz",
-            })
-    return deals
-
-
 def redirect_target(session, url):
     """Where a link redirects to, read from its Location header (not followed)."""
     try:
@@ -335,8 +295,6 @@ def mentions(text, words):
 
 def matching_topic(deal, cfg):
     """Name of the chosen topic the deal fits, by its community category or else a word in its title."""
-    if deal.get("topic"):  # Skroutz deals come from the category pages chosen in the config
-        return deal["topic"]
     for name, topic in cfg["topics"].items():
         if deal.get("category") in topic.get("categories", []):
             return name
@@ -473,6 +431,55 @@ def send_deals(cfg, deals):
         send_telegram(cfg, chunk)
 
 
+def runs_last_day():
+    """How many scheduled scans GitHub started in the last 24 hours; None outside GitHub Actions."""
+    repo, token = os.environ.get("GITHUB_REPOSITORY"), os.environ.get("GITHUB_TOKEN")
+    if not (repo and token):
+        return None
+    since = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        r = requests.get(f"https://api.github.com/repos/{repo}/actions/workflows/scan.yml/runs",
+                         params={"event": "schedule", "created": f">={since}", "per_page": 1},
+                         headers={"Authorization": f"Bearer {token}"}, timeout=30)
+        return r.json()["total_count"] if r.ok else None
+    except (requests.RequestException, ValueError, KeyError):
+        return None
+
+
+def sent_last_day():
+    """How many deals were sent in the last 24 hours, and when the last one was (from found_deals.csv)."""
+    if not FOUND_LOG.exists():
+        return 0, None
+    with FOUND_LOG.open(newline="", encoding="utf-8-sig") as f:
+        times = [datetime.strptime(row["time"], "%Y-%m-%d %H:%M") for row in csv.DictReader(f)]
+    since = datetime.now() - timedelta(days=1)  # the log is written in the runner's local time
+    return sum(t >= since for t in times), max(times, default=None)
+
+
+def daily_status_due(cfg, now):
+    """Today's date if the daily status message is due (once a day, after the configured UTC hour)."""
+    last = json.loads(STATUS.read_text(encoding="utf-8")).get("last_status") if STATUS.exists() else None
+    today = now.date().isoformat()
+    return today if now.hour >= cfg["daily_status_utc_hour"] and last != today else None
+
+
+def status_message(read, failed, runs, sent, last_sent):
+    """The daily message that tells a quiet day apart from a broken scanner.
+
+    read: deals each source returned in this run; failed: the error of each source that broke.
+    """
+    problems = [f"• {name}: {why}" for name, why in failed.items()]
+    problems += [f"• {name}: δεν βρήκε καμία προσφορά στη σελίδα (μήπως άλλαξε;)"
+                 for name, count in read.items() if count == 0]
+    head = "⚠️ <b>Ο ανιχνευτής θέλει έλεγχο</b>" if problems else "✔️ <b>Ο ανιχνευτής δουλεύει</b>"
+    day = "" if runs is None else f"{runs} έλεγχο{'ς' if runs == 1 else 'ι'}, "
+    day += f"{sent} προσφορ{'ά πέρασε' if sent == 1 else 'ές πέρασαν'} τα φίλτρα"
+    if not sent and last_sent:
+        day += f" (η τελευταία στις {last_sent:%d/%m})"
+    latest = ", ".join(f"{name} {count}" for name, count in read.items()) or "καμία πηγή"
+    return "\n".join([head, f"24 ώρες: {day}", f"Τελευταίος έλεγχος, προσφορές που διάβασε: {latest}"] + problems)
+
+
 TOKEN_SHAPE = re.compile(r"\d+:[A-Za-z0-9_-]{30,}")
 
 
@@ -538,13 +545,11 @@ def main():
     session = requests.Session()
     session.headers.update({"User-Agent": UA, "Accept-Language": "en;q=0.8"})
 
-    found, counts = [], []
+    found, counts, read, failed = [], [], {}, {}
     for name, enabled in cfg["sources"].items():
         if not enabled:
             continue
-        if name == "skroutz":
-            scan = skroutz_deals
-        elif name == "insomnia":
+        if name == "insomnia":
             scan = insomnia_deals
         else:
             scan = pepper_deals if name in PEPPER_SITES else camel_deals
@@ -552,10 +557,12 @@ def main():
             deals = scan(session, name, cfg)
         except Exception as e:  # one broken source must not stop the others
             log(f"{name}: σφάλμα {e.__class__.__name__}: {e}")
+            failed[name] = f"σφάλμα {getattr(getattr(e, 'response', None), 'status_code', None) or e.__class__.__name__}"
             continue
         resolve_short_shops(session, deals)
         big = [d for d in deals if is_big(d, cfg)]
         counts.append(f"{name} {len(big)}/{len(deals)}")
+        read[name] = len(deals)
         found.extend(big)
 
     new, keys = [], set()
@@ -572,28 +579,33 @@ def main():
         for d in to_send:
             text = re.sub(r'<a href="([^"]*)">(.*?)</a>', r"\2 \1", format_deal(d))
             print("\n" + re.sub(r"</?b>", "", text))
-        return 0
-    if not new:
+        print("\n" + re.sub(r"</?b>", "", status_message(read, failed, runs_last_day(), *sent_last_day())))
         return 0
 
-    if telegram_ready(cfg):
-        send_deals(cfg, to_send)
-    else:
-        log("Το Telegram δεν έχει ρυθμιστεί ακόμα· οι προσφορές γράφτηκαν μόνο στο found_deals.csv")
+    if new:
+        if telegram_ready(cfg):
+            send_deals(cfg, to_send)
+        else:
+            log("Το Telegram δεν έχει ρυθμιστεί ακόμα· οι προσφορές γράφτηκαν μόνο στο found_deals.csv")
 
-    now = int(time.time())
-    seen.update({d["key"]: now for d in new})
-    seen = {k: t for k, t in seen.items() if now - t < 30 * 86400}
-    STATE.write_text(json.dumps(seen), encoding="utf-8")
-    write_header = not FOUND_LOG.exists()
-    with FOUND_LOG.open("a", newline="", encoding="utf-8-sig") as f:
-        w = csv.writer(f)
-        if write_header:
-            w.writerow(["time", "drop_%", "price", "usual_price", "currency", "title", "store", "url"])
-        for d in to_send:
-            drop = round((1 - d["price"] / d["ref"]) * 100) if d["ref"] else ""
-            w.writerow([datetime.now().strftime("%Y-%m-%d %H:%M"), drop, d["price"],
-                        d["ref"] or "", d["cur"], d["title"], d["where"], d["url"]])
+        now = int(time.time())
+        seen.update({d["key"]: now for d in new})
+        seen = {k: t for k, t in seen.items() if now - t < 30 * 86400}
+        STATE.write_text(json.dumps(seen), encoding="utf-8")
+        write_header = not FOUND_LOG.exists()
+        with FOUND_LOG.open("a", newline="", encoding="utf-8-sig") as f:
+            w = csv.writer(f)
+            if write_header:
+                w.writerow(["time", "drop_%", "price", "usual_price", "currency", "title", "store", "url"])
+            for d in to_send:
+                drop = round((1 - d["price"] / d["ref"]) * 100) if d["ref"] else ""
+                w.writerow([datetime.now().strftime("%Y-%m-%d %H:%M"), drop, d["price"],
+                            d["ref"] or "", d["cur"], d["title"], d["where"], d["url"]])
+
+    today = daily_status_due(cfg, datetime.now(timezone.utc))
+    if today and telegram_ready(cfg):
+        send_telegram(cfg, status_message(read, failed, runs_last_day(), *sent_last_day()))
+        STATUS.write_text(json.dumps({"last_status": today}), encoding="utf-8")
     return 0
 
 

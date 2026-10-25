@@ -2,7 +2,9 @@ name: Deal scan
 
 on:
   schedule:
-    - cron: "17 * * * *"  # every hour at :17 (GitHub is busiest on the hour)
+    # twice an hour, away from the full hour when GitHub is busiest: GitHub drops many
+    # scheduled runs (an hourly schedule ran only ~8 times a day), so ask more often
+    - cron: "17,47 * * * *"
   workflow_dispatch:
     inputs:
       dry_run:
@@ -11,10 +13,11 @@ on:
         default: true
 
 permissions:
-  contents: write  # to save seen.json / found_deals.csv after each run
+  contents: write  # to save seen.json / found_deals.csv / status.json after each run
+  actions: read    # to count the day's runs for the daily status message
 
 concurrency:
-  group: deal-scan
+  group: deal-scan  # one run at a time; a run that is still going is never cancelled
 
 jobs:
   scan:
@@ -31,18 +34,24 @@ jobs:
         with:
           python-version: "3.13"
       - run: pip install requests==2.34.2
+      - name: Check the filters
+        # a broken config.json or filter stops here, before anything is sent or remembered
+        run: python -m unittest -v test_deal_scanner
       - name: Scan
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GITHUB_TOKEN: ${{ github.token }}
           DRY_RUN: ${{ inputs.dry_run && '--dry-run' || '' }}
         run: python deal_scanner.py $DRY_RUN
       - name: Remember what was sent
         if: ${{ !inputs.dry_run }}
+        # status.json changes once a day, so this also commits daily: GitHub pauses the
+        # schedule of a public repository after 60 days without commits
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add seen.json found_deals.csv
+          git add seen.json found_deals.csv status.json
           if ! git diff --cached --quiet; then
             git commit -m "Remember sent deals"
             git pull --rebase

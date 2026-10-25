@@ -190,6 +190,7 @@
   ],
   "pepper_pages": 4,
   "insomnia_days": 3,
+  "daily_status_utc_hour": 17,
   "exclude_words": [
     "SFP", "Transceiver", "Medienkonverter", "Media Converter",
     "Multimode", "Singlemode", "Patchpanel", "Patch Panel",
@@ -199,7 +200,6 @@
     "οθόνη", "τηλεόραση", "ηχομπάρα", "λάπτοπ", "φορητός υπολογιστής"
   ],
   "sources": {
-    "skroutz": false,
     "mydealz": true,
     "preisjaeger": true,
     "camel_de": true,
