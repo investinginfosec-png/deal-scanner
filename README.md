@@ -22,6 +22,12 @@ GitHub's servers, so its offers reach Telegram through forum email notifications
   or never (`null`: Amazon.it, .fr, .es). The weight comes from the topic's parcel size
   (`forwarding.size`, default small) through `parcel_kg`. `vat_factor` turns the shop's price
   into one with Greek VAT (24%), which Amazon charges for deliveries to Greece.
+- An Amazon.it/.fr/.es deal is dropped when Amazon.de sells the same product (same ASIN) for
+  less, delivered to Greece. Amazon's terms forbid robots on its pages and camelcamelcamel's
+  product pages refuse scripts, so this uses only the Amazon.de prices the sources list in the
+  same run; every such message also links the product on Amazon.de to compare by hand.
+- `barebone_words`: titles with these words get a warning that the item comes without RAM and
+  storage (mini PCs sold as kits).
 - `forwarding`: German shops that don't ship to Greece (MediaMarkt, Otto, …) are reachable
   through a parcel forwarder (Forward2me, ColisExpat). Their deals count only for items
   whose usual price is at least `min_usual_price_eur`, and the estimated forwarding cost

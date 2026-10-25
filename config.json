@@ -214,6 +214,8 @@
     "reconditionné", "d'occasion", "Seconde Main", "reacondicionado", "segunda mano", "usado",
     "ricondizionato", "seconda mano", "usato"
   ],
+  "barebone_words": ["Barebone", "NO RAM", "ohne RAM", "ohne Arbeitsspeicher", "sans RAM", "sin RAM", "senza RAM",
+                     "without RAM", "w/o RAM", "χωρίς RAM"],
   "like_new_words": ["wie neu", "like new", "neuwertig", "hervorragend", "exzellent", "excellent", "Renewed Premium", "σαν καινούργιο", "άψογη", "άριστη κατάσταση",
                      "comme neuf", "como nuevo", "come nuovo", "excelente", "eccellente"],
   "skroutz_categories": [

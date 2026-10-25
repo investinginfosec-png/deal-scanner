@@ -281,6 +281,33 @@ def unique_products(deals):
     return [d for d in deals if any(d is k for k in kept.values())]
 
 
+def add_amazon_de_prices(deals, prices):
+    """Remember the Amazon.de prices among `deals` (product id → lowest price).
+
+    Amazon's terms forbid robots on its pages and camelcamelcamel's product pages refuse
+    scripts, so Amazon.de prices come only from what the sources list in the same run.
+    """
+    for d in deals:
+        asin = AMAZON_ASIN.search(d["url"])
+        if asin and d["price"] and urlsplit(d["url"]).netloc.removeprefix("www.") == "amazon.de":
+            prices[asin.group(1)] = min(d["price"], prices.get(asin.group(1), d["price"]))
+
+
+def cheaper_on_amazon_de(deal, de_prices, cfg):
+    """Whether Amazon.de sells an Amazon.it/.fr/.es deal's product for less, delivered to Greece.
+
+    The Amazon.de cost is kept on the deal, to show it in the message when it is dearer.
+    """
+    asin = AMAZON_ASIN.search(deal["url"])
+    host = urlsplit(deal["url"]).netloc.removeprefix("www.")
+    if not asin or host == "amazon.de" or host not in cfg["shops"] or asin.group(1) not in de_prices:
+        return False
+    free_from, (per_parcel, per_kg), _, vat = shop_terms({"shop_host": "amazon.de"}, cfg)
+    price = de_prices[asin.group(1)]
+    deal["amazon_de_cost"] = price * vat + (0 if price >= free_from else per_parcel + per_kg * deal["parcel_kg"])
+    return deal["amazon_de_cost"] <= deal["price"] * deal["vat_factor"] + deal["delivery"]
+
+
 def shop_terms(deal, cfg):
     """How the deal's shop reaches Greece: (order value for free delivery, delivery rate below it
     as (per parcel, per kg), forwarded, price factor for Greek VAT).
@@ -459,11 +486,17 @@ def format_deal(d, cfg):
             delivery_line += f" · τελικό με ελληνικό ΦΠΑ ≈ {fmt_price(landed, cur)}"
         if d.get("bulky"):
             delivery_line += " · ⚠️ ογκώδες: δες τα μεταφορικά στο καλάθι"
+        if d.get("amazon_de_cost"):
+            delivery_line += f" · 🇩🇪 στο Amazon.de ≈ {fmt_price(d['amazon_de_cost'], '€')}"
+    barebone = ("⚠️ <b>barebone</b>: χωρίς RAM και δίσκο (συνήθως και χωρίς Windows), πρόσθεσε το κόστος τους"
+                if mentions(d["title"], cfg["barebone_words"]) else "")
 
     links = [f'<a href="{html.escape(d["url"])}">🛒 αγορά</a>']
     asin = AMAZON_ASIN.search(d["url"])
     if asin:
         links.append(f'<a href="https://{urlsplit(d["url"]).netloc}/product-reviews/{asin.group(1)}">⭐ κριτικές</a>')
+        if urlsplit(d["url"]).netloc.removeprefix("www.") != "amazon.de":  # often cheaper, and free delivery
+            links.append(f'<a href="https://www.amazon.de/dp/{asin.group(1)}">🇩🇪 ίδιο στο Amazon.de</a>')
     if not d.get("local"):  # what it costs in Greece, to judge the deal and the resale price
         links.append(f'<a href="https://www.skroutz.gr/search?keyphrase={quote_plus(search_name(d["title"], cfg))}">'
                      f'🇬🇷 Skroutz</a>')
@@ -475,7 +508,8 @@ def format_deal(d, cfg):
     if extra and "camelcamelcamel" not in extra:
         links.append(f'<a href="{html.escape(extra)}">💬 συζήτηση</a>')
 
-    lines = [head, html.escape(d["title"][:120], quote=False), " · ".join(evidence), delivery_line, " · ".join(links)]
+    lines = [head, html.escape(d["title"][:120], quote=False), barebone, " · ".join(evidence), delivery_line,
+             " · ".join(links)]
     return "\n".join(line for line in lines if line)
 
 
@@ -630,6 +664,7 @@ def main():
     session.headers.update({"User-Agent": UA, "Accept-Language": "en;q=0.8"})
 
     found, counts, read, failed = [], [], {}, {}
+    de_prices = {}  # Amazon.de prices read in this run, by product id
     for name, enabled in cfg["sources"].items():
         if not enabled:
             continue
@@ -644,7 +679,8 @@ def main():
             failed[name] = f"σφάλμα {getattr(getattr(e, 'response', None), 'status_code', None) or e.__class__.__name__}"
             continue
         resolve_short_shops(session, deals)
-        big = [d for d in deals if is_big(d, cfg)]
+        add_amazon_de_prices(deals, de_prices)
+        big =[d for d in deals if is_big(d, cfg)]
         counts.append(f"{name} {len(big)}/{len(deals)}")
         read[name] = len(deals)
         found.extend(big)
@@ -656,10 +692,14 @@ def main():
             new.append(d)
     new.sort(key=lambda d: (not d["price_error"], d["price"] / d["ref"] if d["ref"] else 1))
     add_shop_links(session, new)
+    add_amazon_de_prices(new, de_prices)
+    # an Amazon.it/.fr/.es deal is no deal when Amazon.de sells the same product for less, and
     # one message per product, and none for a product another post already brought in the last 30 days;
     # the posts left out are still remembered as seen below
-    to_send = [d for d in unique_products(new) if f"product:{product_key(d)}" not in seen]
-    log(f"έλεγχος: {', '.join(counts)} -> {len(to_send)} νέες")
+    worth = [d for d in new if not cheaper_on_amazon_de(d, de_prices, cfg)]
+    to_send = [d for d in unique_products(worth) if f"product:{product_key(d)}" not in seen]
+    dearer = f", {len(new) - len(worth)} φθηνότερες στο Amazon.de" if len(worth) < len(new) else ""
+    log(f"έλεγχος: {', '.join(counts)} -> {len(to_send)} νέες{dearer}")
 
     if args.dry_run:
         for d in to_send:

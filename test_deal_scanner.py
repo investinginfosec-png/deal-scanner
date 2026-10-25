@@ -46,13 +46,14 @@ class ConfigTest(unittest.TestCase):
         # the Apps Script reads topics, brands, used_words, like_new_words and exclude_words too
         for key in ["min_drop_percent", "min_saving_eur", "min_usual_price_eur", "min_temperature",
                     "hot_tier", "shops", "parcel_kg", "forwarding", "topics", "brands", "used_words", "like_new_words",
+                    "barebone_words",
                     "exclude_words", "sources", "pepper_pages", "insomnia_days", "daily_status_utc_hour",
                     "expected_runs_per_day", "skroutz_categories"]:
             self.assertIn(key, CFG)
         self.assertIn(CFG["daily_status_utc_hour"], range(24))
 
     def test_word_lists(self):
-        for key in ["brands", "used_words", "like_new_words", "exclude_words"]:
+        for key in ["brands", "used_words", "like_new_words", "exclude_words", "barebone_words"]:
             self.assertTrue(CFG[key], key)
             for word in CFG[key]:
                 self.assertTrue(isinstance(word, str) and word.strip(), f"{key}: {word!r}")
@@ -163,6 +164,23 @@ class FilterTest(unittest.TestCase):
                 self.assertTrue(ds.is_big(deal, CFG), host)
                 self.assertAlmostEqual(deal["delivery"], shop["per_parcel_eur"] + shop["per_kg_eur"] * CFG["parcel_kg"][size])
 
+    def test_skipped_when_amazon_de_is_cheaper(self):
+        def italian():
+            deal = amazon_deal("ASUS NUC 15 Pro+ Mini PC Barebone", ref=861, drop=30, shop_host="amazon.it",
+                               url=f"https://www.amazon.it/dp/{ASIN}")
+            self.assertTrue(ds.is_big(deal, CFG))
+            return deal
+        prices = {}
+        ds.add_amazon_de_prices([amazon_deal(HEADPHONES, ref=700, drop=27)], prices)  # Amazon.de, same product
+        self.assertEqual(prices, {ASIN: 511})
+        self.assertTrue(ds.cheaper_on_amazon_de(italian(), prices, CFG))
+        self.assertFalse(ds.cheaper_on_amazon_de(italian(), {}, CFG))  # Amazon.de not read in this run
+        dearer = italian()
+        self.assertFalse(ds.cheaper_on_amazon_de(dearer, {ASIN: 700}, CFG))
+        self.assertIn(f"στο Amazon.de ≈ {ds.fmt_price(700 * CFG['shops']['amazon.de']['vat_factor'], '€')}",
+                      ds.format_deal(dearer, CFG))
+        self.assertFalse(ds.cheaper_on_amazon_de(amazon_deal(HEADPHONES), prices, CFG))  # already Amazon.de
+
     def test_whole_shop_sales_are_excluded(self):
         for title in ["tink Licht & Sicherheit Sale / z.B. Bosch Smart Home Starter-Set", "Sammeldeal Sony Kopfhörer",
                       "Sélection de casques Sony", "Recopilación de sartenes y utensilios de cocina de WMF"]:
@@ -248,6 +266,17 @@ class LinksAndMessagesTest(unittest.TestCase):
         self.assertIn("τελικό με ελληνικό ΦΠΑ ≈", text)
         self.assertIn(f"amazon.it/product-reviews/{ASIN}", text)
         self.assertIn(f"keepa.com/#!product/8-{ASIN}", text)  # Keepa's number for Amazon.it
+        self.assertIn(f"amazon.de/dp/{ASIN}", text)  # to compare with Amazon.de
+
+    def test_barebone_warning(self):
+        deal = amazon_deal("ASUS NUC 15 Pro+ Mini PC Intel Core Ultra 7 255H, Barebone, NO RAM/SSD")
+        self.assertTrue(ds.is_big(deal, CFG))
+        text = ds.format_deal(deal, CFG)
+        self.assertIn("barebone</b>: χωρίς RAM και δίσκο", text)
+        self.assertNotIn("ίδιο στο Amazon.de", text)  # already Amazon.de
+        deal = amazon_deal(HEADPHONES)
+        ds.is_big(deal, CFG)
+        self.assertNotIn("barebone", ds.format_deal(deal, CFG))
 
     def test_bulky_items_warn_about_delivery(self):
         deal = amazon_deal("Ninja Heißluftfritteuse AF300EU")
