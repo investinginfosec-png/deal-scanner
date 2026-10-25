@@ -45,7 +45,8 @@ jobs:
           DRY_RUN: ${{ inputs.dry_run && '--dry-run' || '' }}
         run: python deal_scanner.py $DRY_RUN
       - name: Remember what was sent
-        if: ${{ !inputs.dry_run }}
+        # also after a failed step: deals already sent must not be sent again
+        if: ${{ !cancelled() && !inputs.dry_run }}
         # status.json changes once a day, so this also commits daily: GitHub pauses the
         # schedule of a public repository after 60 days without commits
         run: |

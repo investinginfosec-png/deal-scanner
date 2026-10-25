@@ -104,9 +104,14 @@ def fetch(session, url):
 
 
 def parse_money(text):
+    """"1.299,90", "1,299.90", "1.299", "79,99" or "79.99" → number: a separator followed by
+    exactly 3 digits groups thousands, any other is the decimal point."""
     s = re.sub(r"[^\d,.]", "", text)
-    if "," in s:
-        s = s.replace(".", "").replace(",", ".")
+    last = max(s.rfind(","), s.rfind("."))
+    if last >= 0 and len(s) - last - 1 != 3:
+        s = re.sub(r"[,.]", "", s[:last]) + "." + s[last + 1:]
+    else:
+        s = re.sub(r"[,.]", "", s)
     return float(s) if s else None
 
 
@@ -155,7 +160,8 @@ CAMEL_TITLE = re.compile(r"^(.*) - down ([\d.]+)% \(.*?\) to (.+?) from (.+)$")
 
 
 INSOMNIA_RSS = "https://www.insomnia.gr/rss/16-offers.xml/"
-PRICE_IN_TEXT = re.compile(r"(\d{1,5}(?:[.,]\d{1,2})?)\s*€|€\s*(\d{1,5}(?:[.,]\d{1,2})?)")
+NUMBER = r"\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?"  # 1.049,90 · 129 · 79,99
+PRICE_IN_TEXT = re.compile(rf"({NUMBER})\s*€|€\s*({NUMBER})")
 
 
 def insomnia_deals(session, name, cfg):
@@ -219,7 +225,6 @@ def camel_deals(session, name, cfg):
                 # camelcamelcamel pages often block phone browsers, so link the product itself
                 "url": f"https://www.{store.lower()}/dp/{asin}",
                 "extra_url": link,
-                "extra_label": "📈 ιστορικό τιμής",
                 "shop_host": store.lower(),
             })
     return deals
@@ -243,7 +248,7 @@ def add_shop_links(session, deals):
         if urlsplit(shop).netloc in AMAZON_SHORT_HOSTS:  # amzn.eu/… → amazon.de/dp/…
             shop = redirect_target(session, shop) or shop
         if shop.startswith("http") and urlsplit(shop).netloc != urlsplit(d["url"]).netloc:
-            d["extra_url"], d["extra_label"] = d["url"], "💬 σελίδα προσφοράς"
+            d["extra_url"] = d["url"]  # the community's page, linked as the discussion
             d["url"] = shop
         time.sleep(1)
 
@@ -256,30 +261,38 @@ def resolve_short_shops(session, deals):
         d["shop_host"] = urlsplit(d["url"]).netloc
 
 
+def product_key(deal):
+    """The product a deal is for: its Amazon id, or else the first words of its title."""
+    asin = AMAZON_ASIN.search(deal["url"])
+    if asin:
+        return asin.group(1)
+    return " ".join(re.sub(r"[\[\(].*?[\]\)]", " ", plain(deal["title"])).split()[:6])
+
+
 def unique_products(deals):
     """One message per product when several communities post it; the most voted post is kept."""
     kept = {}
     for d in sorted(deals, key=lambda d: -d.get("temperature", 0)):
-        asin = AMAZON_ASIN.search(d["url"])
-        kept.setdefault(asin.group(1) if asin else " ".join(d["title"].lower().split()[:3]), d)
+        kept.setdefault(product_key(d), d)
     return [d for d in deals if any(d is k for k in kept.values())]
 
 
 def shop_terms(deal, cfg):
-    """How the deal's shop reaches Greece: (order value for free delivery, delivery fee below it, forwarded).
+    """How the deal's shop reaches Greece: (order value for free delivery, delivery fee below it,
+    forwarded, price factor for Greek VAT).
 
     German shops that don't ship to Greece go through a parcel forwarder, so their delivery
     is never free and its fee depends on the parcel's size. None if the shop can't reach Greece.
     """
     if deal.get("local"):
-        return 0, 0, False
+        return 0, 0, False, 1.0
     host = deal.get("shop_host", "").lower().removeprefix("www.")
     is_host = lambda domain: host == domain or host.endswith("." + domain)
     for domain, terms in cfg["shops"].items():
         if is_host(domain):
-            return terms["free_from"], terms["delivery_eur"], False
+            return terms["free_from"], terms["delivery_eur"], False, terms.get("vat_factor", 1.0)
     if any(is_host(domain) for domain in cfg["forwarding"]["shops"]):
-        return float("inf"), None, True
+        return float("inf"), None, True, 1.0  # bought with German VAT, then forwarded
     return None
 
 
@@ -322,13 +335,16 @@ def is_big(deal, cfg):
     terms = shop_terms(deal, cfg)
     if terms is None:
         return False
-    deal["free_from"], delivery, deal["forwarded"] = terms  # all shown in the message
+    deal["free_from"], delivery, deal["forwarded"], deal["vat_factor"] = terms  # all shown in the message
     deal["topic"] = matching_topic(deal, cfg)
     if not deal["topic"]:
         return False
+    forwarding = cfg["forwarding"]
+    size = forwarding["size"].get(deal["topic"], "small")
     if deal["forwarded"]:
-        forwarding = cfg["forwarding"]
-        delivery = forwarding["cost_eur"][forwarding["size"].get(deal["topic"], "small")]
+        delivery = forwarding["cost_eur"][size]
+    # big parcels may cost extra to send to Greece even above the free-delivery minimum
+    deal["bulky"] = size != "small" and not deal.get("local")
     deal["delivery"] = delivery if deal["price"] is not None and deal["price"] < deal["free_from"] else 0
     if deal.get("curated"):
         return True  # Greek community picks state no usual price: topic, brand and condition decide
@@ -354,50 +370,95 @@ def fmt_price(value, cur):
     return f"{value:,.2f}".replace(",", " ").replace(".", ",") + cur
 
 
-def format_deal(d):
-    if d["ref"]:
-        drop = round((1 - d["price"] / d["ref"]) * 100)
-        head = f"🔥 <b>−{drop}%</b>  {fmt_price(d['price'], d['cur'])} (αντί {fmt_price(d['ref'], d['cur'])})"
+UNIT = re.compile(r"\d+(?:[.,]\d+)?-?(?:tlg|teilig|stk|stück|l|ml|w|kw|wh|kwh|mah|cm|mm|m|kg|g|zoll|v)\.?", re.IGNORECASE)
+
+
+def search_name(title, cfg):
+    """Brand and model from a deal's title ("Ninja CRISPi FN101"), to look the product up in Greek shops."""
+    text = re.sub(r"[\[\(].*?[\]\)]", " ", title)
+    text = re.split(r"\s(?:für|ab|bei|um|nur|statt|mit|inkl\.?)\s|\s[|/–-]\s|[:,;]", text, maxsplit=1)[0]
+    words = text.split()
+    brands = {plain(b) for b in cfg["brands"]}
+    words = words[next((i for i, w in enumerate(words) if plain(w) in brands), 0):]
+    name = words[:1]
+    for before, word in zip(words, words[1:]):
+        if len(name) >= 4:
+            break
+        if not re.search(r"[A-Za-z0-9]", word) or UNIT.fullmatch(word) or re.fullmatch(r"[IVX]+", word):
+            continue
+        if re.fullmatch(r"\d{1,2}", word):  # a generation number goes with the word before it: Pocket 3
+            name += [word] if before in name else [before, word]
+        elif re.search(r"\d", word):  # a model code, without colour/region letters: FN101EUSTGD → FN101
+            name.append(re.sub(r"^([A-Za-z]{1,4}-?\d{2,5})[A-Za-z]{4,}$", r"\1", word))
+        elif word.isupper() or not (word.islower() or word.istitle()):  # product lines: CRISPi, PRO, G
+            name.append(word)
+    return " ".join(name if len(name) > 1 else words[:3])
+
+
+def format_deal(d, cfg):
+    """One deal as a message: verdict and price, title, evidence, delivery, links.
+
+    🟢 reaches Greece directly, 🟡 only through a parcel forwarder, ⚡ is a price error.
+    """
+    cur, rate = d["cur"], TO_EUR.get(d["cur"], 1.0)
+    delivery = d.get("delivery") or 0
+    icon = "⚡" if d["price_error"] else "🟡" if d.get("forwarded") else "🟢"
+    if d["ref"] and d["price"] is not None:
+        final = round((1 - (d["price"] + delivery / rate) / d["ref"]) * 100)  # after delivery
+        fee = f" + {fmt_price(delivery, '€')} {'προώθηση' if d.get('forwarded') else 'μεταφορικά'}" if delivery else ""
+        head = f"{icon} <b>−{final}%</b> · <b>{fmt_price(d['price'], cur)}</b>{fee} αντί {fmt_price(d['ref'], cur)}"
     elif d["price"] is None:
-        head = "🔥 <b>προσφορά</b>"
+        head = f"{icon} <b>προσφορά</b>"
     else:
-        head = f"🔥 <b>{fmt_price(d['price'], d['cur'])}</b>"
+        head = f"{icon} <b>{fmt_price(d['price'], cur)}</b>"
     if d["price"] == 0:
-        head += "  <b>ΔΩΡΕΑΝ</b>"
+        head += " · <b>ΔΩΡΕΑΝ</b>"
     if d["price_error"]:
-        head += "  ⚠️ <b>λάθος τιμής</b>"
-    host = urlsplit(d["url"]).netloc.removeprefix("www.")
-    links = f'🛒 <a href="{html.escape(d["url"])}">{html.escape(host)}</a>'
-    if d.get("extra_url"):
-        links += f'\n<a href="{html.escape(d["extra_url"])}">{d["extra_label"]}</a>'
-    asin = AMAZON_ASIN.search(d["url"])
-    if asin and "camelcamelcamel" not in d.get("extra_url", ""):
-        links += f'\n<a href="https://keepa.com/#!product/3-{asin.group(1)}">📈 ιστορικό τιμής</a>'
-    if not d.get("local"):  # what it costs in Greece, to judge the deal and the resale price
-        name = " ".join(re.sub(r"[\[\(].*?[\]\)]", " ", d["title"]).split()[:6])
-        links += f'\n<a href="https://www.skroutz.gr/search?keyphrase={quote_plus(name)}">🇬🇷 τιμή στην Ελλάδα</a>'
-    evidence = ""
+        head += " · ⚠️ <b>λάθος τιμής</b>"
+
     if d.get("temperature"):
-        evidence += f"\n👍 {round(d['temperature'])}° στο {d['source']}"
-        evidence += f" · {d['comments']} σχόλια" if d.get("comments") else ""
-    if RECORD_LOW.search(d["title"]):
-        evidence += "\n📉 χαμηλότερη τιμή μέχρι σήμερα, κατά τον αναρτήσαντα"
-    # the headline drop leaves out delivery, so state what remains after it
-    final = (f" · τελικά ≈ −{round((1 - (d['price'] + d['delivery']) / d['ref']) * 100)}%"
-             if d.get("delivery") and d["ref"] else "")
-    if d.get("forwarded"):
-        delivery = (f"\n📦 μόνο μέσω προώθησης από Γερμανία: +≈{fmt_price(d['delivery'], '€')}{final}, "
-                    f"1–2 εβδομάδες (Forward2me / ColisExpat)")
-    elif d.get("delivery"):
-        delivery = (f"\n🚚 +≈{fmt_price(d['delivery'], '€')} μεταφορικά{final} "
-                    f"(δωρεάν αν η παραγγελία φτάσει {d['free_from']}€)")
-    elif d.get("free_from"):
-        delivery = f"\n🚚 δωρεάν αποστολή στην Ελλάδα (πάνω από {d['free_from']}€)"
+        evidence = [f"👍 {round(d['temperature'])}° στο {d['source']}"
+                    + (f", {d['comments']} σχόλια" if d.get("comments") else "")]
+    elif d.get("local"):
+        evidence = [f"{d['flag']} {html.escape(d['where'], quote=False)} · {d['source']}"]
     else:
-        delivery = ""
-    topic = f"\n🏷️ {html.escape(d['topic'], quote=False)}" if d.get("topic") else ""
-    return (f"{head}\n{html.escape(d['title'][:160], quote=False)}\n"
-            f"{d['flag']} {html.escape(d['where'], quote=False)} · {d['source']}{evidence}{delivery}{topic}\n{links}")
+        evidence = [f"📉 {d['source']}"]
+    if RECORD_LOW.search(d["title"]):
+        evidence.append("χαμηλότερη τιμή κατά τον αναρτήσαντα")
+    if d.get("topic"):
+        evidence.append(f"🏷️ {html.escape(d['topic'], quote=False)}")
+
+    shop = (d.get("shop_host") or urlsplit(d["url"]).netloc).removeprefix("www.")
+    if d.get("forwarded"):
+        delivery_line = f"📦 {shop}: μόνο μέσω προώθησης (Forward2me / ColisExpat), 1–2 εβδομάδες"
+    elif d.get("local"):
+        delivery_line = ""
+    else:
+        delivery_line = f"🚚 {shop}: " + (f"δωρεάν μεταφορικά από {d['free_from']}€" if delivery
+                                          else "δωρεάν μεταφορικά για Ελλάδα")
+        if d.get("vat_factor", 1.0) != 1.0 and d["price"]:
+            landed = d["price"] * d["vat_factor"] + delivery / rate
+            delivery_line += f" · τελικό με ελληνικό ΦΠΑ ≈ {fmt_price(landed, cur)}"
+        if d.get("bulky"):
+            delivery_line += " · ⚠️ ογκώδες: δες τα μεταφορικά στο καλάθι"
+
+    links = [f'<a href="{html.escape(d["url"])}">🛒 αγορά</a>']
+    asin = AMAZON_ASIN.search(d["url"])
+    if asin:
+        links.append(f'<a href="https://{urlsplit(d["url"]).netloc}/product-reviews/{asin.group(1)}">⭐ κριτικές</a>')
+    if not d.get("local"):  # what it costs in Greece, to judge the deal and the resale price
+        links.append(f'<a href="https://www.skroutz.gr/search?keyphrase={quote_plus(search_name(d["title"], cfg))}">'
+                     f'🇬🇷 Skroutz</a>')
+    extra = d.get("extra_url", "")
+    if "camelcamelcamel" in extra:
+        links.append(f'<a href="{html.escape(extra)}">📈 ιστορικό</a>')
+    elif asin:
+        links.append(f'<a href="https://keepa.com/#!product/3-{asin.group(1)}">📈 ιστορικό</a>')
+    if extra and "camelcamelcamel" not in extra:
+        links.append(f'<a href="{html.escape(extra)}">💬 συζήτηση</a>')
+
+    lines = [head, html.escape(d["title"][:120], quote=False), " · ".join(evidence), delivery_line, " · ".join(links)]
+    return "\n".join(line for line in lines if line)
 
 
 def telegram_call(token, method, http_timeout=30, **payload):
@@ -411,35 +472,28 @@ def telegram_call(token, method, http_timeout=30, **payload):
     return r.json()
 
 
-def send_telegram(cfg, text):
+def send_telegram(cfg, text, silent=False):
     telegram_call(cfg["telegram_bot_token"], "sendMessage", chat_id=cfg["telegram_chat_id"],
-                  text=text, parse_mode="HTML", disable_web_page_preview=True)
+                  text=text, parse_mode="HTML", disable_web_page_preview=True, disable_notification=silent)
 
 
 def send_deals(cfg, deals):
-    header = f"<b>{len(deals)} νέες προσφορές</b> (πτώση ≥{cfg['min_drop_percent']}%)"
-    chunks, current = [], header
+    """One message per deal; those that need a parcel forwarder arrive without a sound."""
     for d in deals:
-        block = format_deal(d)
-        if len(current) + len(block) + 2 > 4000:  # Telegram limit is 4096
-            chunks.append(current)
-            current = block
-        else:
-            current += "\n\n" + block
-    chunks.append(current)
-    for chunk in chunks:
-        send_telegram(cfg, chunk)
+        send_telegram(cfg, format_deal(d, cfg), silent=bool(d.get("forwarded")))
+        time.sleep(1)  # Telegram allows about one message a second per chat
 
 
 def runs_last_day():
-    """How many scheduled scans GitHub started in the last 24 hours; None outside GitHub Actions."""
+    """How many scans GitHub ran in the last 24 hours, scheduled or started by the Google script;
+    None outside GitHub Actions."""
     repo, token = os.environ.get("GITHUB_REPOSITORY"), os.environ.get("GITHUB_TOKEN")
     if not (repo and token):
         return None
     since = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
     try:
         r = requests.get(f"https://api.github.com/repos/{repo}/actions/workflows/scan.yml/runs",
-                         params={"event": "schedule", "created": f">={since}", "per_page": 1},
+                         params={"created": f">={since}", "per_page": 1},
                          headers={"Authorization": f"Bearer {token}"}, timeout=30)
         return r.json()["total_count"] if r.ok else None
     except (requests.RequestException, ValueError, KeyError):
@@ -450,8 +504,13 @@ def sent_last_day():
     """How many deals were sent in the last 24 hours, and when the last one was (from found_deals.csv)."""
     if not FOUND_LOG.exists():
         return 0, None
+    times = []
     with FOUND_LOG.open(newline="", encoding="utf-8-sig") as f:
-        times = [datetime.strptime(row["time"], "%Y-%m-%d %H:%M") for row in csv.DictReader(f)]
+        for row in csv.DictReader(f):
+            try:
+                times.append(datetime.strptime(row["time"], "%Y-%m-%d %H:%M"))
+            except (KeyError, TypeError, ValueError):  # a damaged line must not stop the run
+                continue
     since = datetime.now() - timedelta(days=1)  # the log is written in the runner's local time
     return sum(t >= since for t in times), max(times, default=None)
 
@@ -463,14 +522,21 @@ def daily_status_due(cfg, now):
     return today if now.hour >= cfg["daily_status_utc_hour"] and last != today else None
 
 
-def status_message(read, failed, runs, sent, last_sent):
-    """The daily message that tells a quiet day apart from a broken scanner.
+def status_problems(read, failed, runs, expected_runs):
+    """What is wrong today: sources that broke or found nothing, or GitHub skipping too many runs.
 
     read: deals each source returned in this run; failed: the error of each source that broke.
     """
     problems = [f"• {name}: {why}" for name, why in failed.items()]
     problems += [f"• {name}: δεν βρήκε καμία προσφορά στη σελίδα (μήπως άλλαξε;)"
                  for name, count in read.items() if count == 0]
+    if runs is not None and runs < expected_runs / 2:
+        problems.append(f"• έγιναν μόνο {runs} από τους ~{expected_runs} ελέγχους του 24ώρου")
+    return problems
+
+
+def status_message(problems, read, runs, sent, last_sent):
+    """The daily message, sent only when something is wrong (a quiet day needs no message)."""
     head = "⚠️ <b>Ο ανιχνευτής θέλει έλεγχο</b>" if problems else "✔️ <b>Ο ανιχνευτής δουλεύει</b>"
     day = "" if runs is None else f"{runs} έλεγχο{'ς' if runs == 1 else 'ι'}, "
     day += f"{sent} προσφορ{'ά πέρασε' if sent == 1 else 'ές πέρασαν'} τα φίλτρα"
@@ -572,14 +638,18 @@ def main():
             new.append(d)
     new.sort(key=lambda d: (not d["price_error"], d["price"] / d["ref"] if d["ref"] else 1))
     add_shop_links(session, new)
-    to_send = unique_products(new)  # the duplicates are still remembered as seen below
+    # one message per product, and none for a product another post already brought in the last 30 days;
+    # the posts left out are still remembered as seen below
+    to_send = [d for d in unique_products(new) if f"product:{product_key(d)}" not in seen]
     log(f"έλεγχος: {', '.join(counts)} -> {len(to_send)} νέες")
 
     if args.dry_run:
         for d in to_send:
-            text = re.sub(r'<a href="([^"]*)">(.*?)</a>', r"\2 \1", format_deal(d))
+            text = re.sub(r'<a href="([^"]*)">(.*?)</a>', r"\2 \1", format_deal(d, cfg))
             print("\n" + re.sub(r"</?b>", "", text))
-        print("\n" + re.sub(r"</?b>", "", status_message(read, failed, runs_last_day(), *sent_last_day())))
+        runs = runs_last_day()
+        problems = status_problems(read, failed, runs, cfg["expected_runs_per_day"])
+        print("\n" + re.sub(r"</?b>", "", status_message(problems, read, runs, *sent_last_day())))
         return 0
 
     if new:
@@ -590,6 +660,7 @@ def main():
 
         now = int(time.time())
         seen.update({d["key"]: now for d in new})
+        seen.update({f"product:{product_key(d)}": now for d in to_send})
         seen = {k: t for k, t in seen.items() if now - t < 30 * 86400}
         STATE.write_text(json.dumps(seen), encoding="utf-8")
         write_header = not FOUND_LOG.exists()
@@ -603,9 +674,17 @@ def main():
                             d["ref"] or "", d["cur"], d["title"], d["where"], d["url"]])
 
     today = daily_status_due(cfg, datetime.now(timezone.utc))
-    if today and telegram_ready(cfg):
-        send_telegram(cfg, status_message(read, failed, runs_last_day(), *sent_last_day()))
-        STATUS.write_text(json.dumps({"last_status": today}), encoding="utf-8")
+    if today:
+        try:
+            runs = runs_last_day()
+            problems = status_problems(read, failed, runs, cfg["expected_runs_per_day"])
+            if problems and telegram_ready(cfg):
+                send_telegram(cfg, status_message(problems, read, runs, *sent_last_day()))
+        except Exception as e:  # the deals are already saved; the status is tried again next run
+            log(f"ημερήσια κατάσταση: σφάλμα {e.__class__.__name__}: {e}")
+        else:
+            # written daily even on quiet days, so the run commits daily and GitHub keeps the schedule
+            STATUS.write_text(json.dumps({"last_status": today}), encoding="utf-8")
     return 0
 
 

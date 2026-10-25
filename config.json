@@ -1,11 +1,11 @@
 {
-  "min_drop_percent": 30,
+  "min_drop_percent": 25,
   "min_saving_eur": 10,
   "min_usual_price_eur": 80,
-  "min_temperature": 200,
-  "hot_tier": {"min_temperature": 300, "min_drop_percent": 15},
+  "min_temperature": 150,
+  "hot_tier": {"min_temperature": 300, "min_drop_percent": 25},
   "shops": {
-    "amazon.de": {"free_from": 59, "delivery_eur": 12.48}
+    "amazon.de": {"free_from": 59, "delivery_eur": 12.48, "vat_factor": 1.042}
   },
   "forwarding": {
     "min_usual_price_eur": 150,
@@ -191,7 +191,9 @@
   "pepper_pages": 4,
   "insomnia_days": 3,
   "daily_status_utc_hour": 17,
+  "expected_runs_per_day": 48,
   "exclude_words": [
+    "Sammeldeal", "z.B.", "z. B.",
     "SFP", "Transceiver", "Medienkonverter", "Media Converter",
     "Multimode", "Singlemode", "Patchpanel", "Patch Panel",
     "Serverschrank", "Netzwerkschrank", "Rackmount", "Rackmontage", "Hutschiene",

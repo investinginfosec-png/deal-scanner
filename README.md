@@ -1,8 +1,10 @@
 # Deal scanner
 
 Checks the voted ("hot") deals on mydealz and preisjaeger and camelcamelcamel's Amazon.de
-price drops twice an hour on GitHub, keeps only deals far below their usual price that
-can reach Greece, and sends them to Telegram. Words match without accents or case.
+price drops on GitHub (twice an hour by its schedule, and every 30 minutes when the Google
+script in skroutz-alerts starts it, since GitHub skips many scheduled runs), keeps only deals
+far below their usual price that can reach Greece, and sends them to Telegram. Words match
+without accents or case.
 Other communities (dealabs, chollometro, pepper.nl, pepper.pl), other Amazons (IT, ES, FR)
 and insomnia.gr offers can be switched on in `sources`; insomnia.gr refuses GitHub's
 servers, so its offers reach Telegram through forum email notifications instead.
@@ -19,18 +21,22 @@ servers, so its offers reach Telegram through forum email notifications instead.
   through a parcel forwarder (Forward2me, ColisExpat). Their deals count only for items
   whose usual price is at least `min_usual_price_eur`, and the estimated forwarding cost
   for the topic's parcel size is added before the drop is checked.
-- Each message shows the evidence: community votes and comments, record-low claims,
-  a price-history link (Keepa) and a link to the product's price in Greece (Skroutz).
-- Once a day, on the first run after `daily_status_utc_hour` (UTC), a short status message
-  says how many runs GitHub made and deals passed in the last 24 hours, and flags a source
-  that failed or found nothing, so a quiet day can be told apart from a broken scanner.
+- One message per deal: 🟢 reaches Greece directly, 🟡 only through a forwarder (sent without
+  a sound), ⚡ a price error. It shows the drop after delivery, community votes and comments,
+  the final price with Greek VAT, a warning for bulky parcels, and links to buy, to the
+  Amazon reviews, to Skroutz (searched by brand and model), to the price history (Keepa)
+  and to the community's discussion. A product is sent once in 30 days, whichever
+  community posts it.
+- Once a day, on the first run after `daily_status_utc_hour` (UTC), the scanner checks
+  itself and sends a message only if something is wrong: a source failed or found nothing,
+  or fewer than half of `expected_runs_per_day` runs happened.
 - Skroutz isn't scanned (it refuses scripts and GitHub's servers); `skroutz_categories` lists
   the categories checked on request in a browser.
 - Telegram credentials are **not** in this repository. On GitHub they come from the
   `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` repository secrets; locally from
   `secrets.json` (ignored by git).
-- `seen.json` remembers which deals were already sent; `found_deals.csv` is the history;
-  `status.json` is the day of the last status message. It changes daily, so the run commits
+- `seen.json` remembers which posts and products were already sent; `found_deals.csv` is the
+  history; `status.json` is the day of the last self-check. It changes daily, so the run commits
   daily, which keeps GitHub from pausing the schedule (it does after 60 days without commits).
 
 Run locally: `python deal_scanner.py --dry-run` (prints only) or `python deal_scanner.py`.
