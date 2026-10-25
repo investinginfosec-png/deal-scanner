@@ -45,7 +45,7 @@ class ConfigTest(unittest.TestCase):
     def test_has_every_setting(self):
         # the Apps Script reads topics, brands, used_words, like_new_words and exclude_words too
         for key in ["min_drop_percent", "min_saving_eur", "min_usual_price_eur", "min_temperature",
-                    "hot_tier", "shops", "forwarding", "topics", "brands", "used_words", "like_new_words",
+                    "hot_tier", "shops", "parcel_kg", "forwarding", "topics", "brands", "used_words", "like_new_words",
                     "exclude_words", "sources", "pepper_pages", "insomnia_days", "daily_status_utc_hour",
                     "expected_runs_per_day", "skroutz_categories"]:
             self.assertIn(key, CFG)
@@ -69,6 +69,14 @@ class ConfigTest(unittest.TestCase):
             self.assertIn(topic, CFG["topics"])
             self.assertIn(size, forwarding["cost_eur"])
         self.assertIn("small", forwarding["cost_eur"])  # the default size
+        self.assertEqual(set(CFG["parcel_kg"]), set(forwarding["cost_eur"]))
+
+    def test_shops(self):
+        for domain, terms in CFG["shops"].items():
+            self.assertTrue(terms["free_from"] is None or terms["free_from"] > 0, domain)  # None: never free
+            self.assertGreater(terms["per_parcel_eur"], 0, domain)
+            self.assertGreaterEqual(terms["per_kg_eur"], 0, domain)
+            self.assertTrue(1 <= terms.get("vat_factor", 1.0) < 1.2, domain)
 
     def test_sources_exist(self):
         for name in CFG["sources"]:
@@ -84,7 +92,10 @@ class FilterTest(unittest.TestCase):
 
     def test_items_other_tools_track_are_excluded(self):
         for title in ["Samsung Odyssey G7 Gaming Monitor", "Lenovo Legion Laptop", "LG OLED TV 55 Zoll",
-                      "Samsung Soundbar HW-Q990D", "Ubiquiti SFP+ Transceiver", "Τηλεόραση LG 55"]:
+                      "Samsung Soundbar HW-Q990D", "Ubiquiti SFP+ Transceiver", "Τηλεόραση LG 55",
+                      "PC Portable 14\" Asus Vivobook 14 - Snapdragon X, SSD 512 Go", "Ordenador portátil Lenovo IdeaPad",
+                      "PC portatile HP 15", "Téléviseur LG OLED 55", "Televisor Samsung 55", "Televisore Sony Bravia",
+                      "Barre de son Sonos Ray", "Barra de sonido Samsung", "Écran PC Samsung Odyssey G5"]:
             self.assertTrue(ds.mentions(title, CFG["exclude_words"]), title)
             self.assertFalse(ds.is_big(amazon_deal(title), CFG), title)
 
@@ -96,9 +107,26 @@ class FilterTest(unittest.TestCase):
     def test_used_only_when_like_new(self):
         self.assertFalse(ds.is_big(amazon_deal(HEADPHONES + " refurbished"), CFG))
         self.assertTrue(ds.is_big(amazon_deal(HEADPHONES + " refurbished, wie neu"), CFG))
+        for used, like_new in [("reconditionné", "comme neuf"), ("reacondicionado", "como nuevo"),
+                               ("ricondizionato", "come nuovo")]:
+            self.assertFalse(ds.is_big(amazon_deal(f"{HEADPHONES} {used}"), CFG), used)
+            self.assertTrue(ds.is_big(amazon_deal(f"{HEADPHONES} {used} - {like_new}"), CFG), like_new)
 
     def test_chosen_topics_only(self):
         self.assertFalse(ds.is_big(amazon_deal("Samsung Galaxy S25 Smartphone"), CFG))
+
+    def test_french_spanish_and_italian_titles(self):
+        for title, topic in [("Friteuse sans huile Ninja AF300EU", "σπίτι & κουζίνα"),
+                             ("Robot aspirador Roborock Q10 S5", "σπίτι & κουζίνα"),
+                             ("Friggitrice ad aria Philips Serie 3000", "σπίτι & κουζίνα"),
+                             ("Écouteurs Sony WF-1000XM5", "ακουστικά & ηχεία"),
+                             ("Auriculares Bose QuietComfort Ultra", "ακουστικά & ηχεία"),
+                             ("Cuffie JBL Tune 770NC", "ακουστικά & ηχεία"),
+                             ("Carte graphique MSI GeForce RTX 5070", "υπολογιστές (κομμάτια & περιφερειακά)"),
+                             ("Teclado Logitech MX Keys S", "υπολογιστές (κομμάτια & περιφερειακά)"),
+                             ("Sedia da ufficio Sihoo M57", "εργονομία γραφείου"),
+                             ("Batterie externe Anker 737", "χρήσιμα καθημερινά")]:
+            self.assertEqual(ds.matching_topic(amazon_deal(title), CFG), topic, title)
 
     def test_community_votes(self):
         self.assertFalse(ds.is_big(amazon_deal(HEADPHONES, temperature=CFG["min_temperature"] - 1), CFG))
@@ -124,10 +152,20 @@ class FilterTest(unittest.TestCase):
         ref = free_from * 0.9 / (1 - drop / 100)  # the price lands just under free delivery
         deal = amazon_deal(HEADPHONES, ref=ref, drop=drop)
         self.assertFalse(ds.is_big(deal, CFG))
-        self.assertEqual(deal["delivery"], CFG["shops"]["amazon.de"]["delivery_eur"])
+        shop = CFG["shops"]["amazon.de"]
+        self.assertEqual(deal["delivery"], shop["per_parcel_eur"] + shop["per_kg_eur"] * CFG["parcel_kg"]["small"])
+
+    def test_other_amazons_never_deliver_free(self):
+        for host in ["amazon.it", "amazon.fr", "amazon.es"]:
+            shop = CFG["shops"][host]
+            for title, size in [(HEADPHONES, "small"), ("Ninja Heißluftfritteuse AF300EU", "medium")]:
+                deal = amazon_deal(title, ref=600, drop=60, shop_host=host, url=f"https://www.{host}/dp/{ASIN}")
+                self.assertTrue(ds.is_big(deal, CFG), host)
+                self.assertAlmostEqual(deal["delivery"], shop["per_parcel_eur"] + shop["per_kg_eur"] * CFG["parcel_kg"][size])
 
     def test_whole_shop_sales_are_excluded(self):
-        for title in ["tink Licht & Sicherheit Sale / z.B. Bosch Smart Home Starter-Set", "Sammeldeal Sony Kopfhörer"]:
+        for title in ["tink Licht & Sicherheit Sale / z.B. Bosch Smart Home Starter-Set", "Sammeldeal Sony Kopfhörer",
+                      "Sélection de casques Sony", "Recopilación de sartenes y utensilios de cocina de WMF"]:
             self.assertFalse(ds.is_big(amazon_deal(title), CFG), title)
 
     def test_shops_that_cant_reach_greece(self):
@@ -202,6 +240,15 @@ class LinksAndMessagesTest(unittest.TestCase):
         self.assertTrue(text.startswith("🟡"), text)
         self.assertIn("μόνο μέσω προώθησης", text)
 
+    def test_message_from_another_amazon(self):
+        deal = amazon_deal(HEADPHONES, ref=600, drop=60, shop_host="www.amazon.it", url=f"https://www.amazon.it/dp/{ASIN}")
+        self.assertTrue(ds.is_big(deal, CFG))
+        text = ds.format_deal(deal, CFG)
+        self.assertIn("amazon.it: χωρίς δωρεάν μεταφορικά για Ελλάδα (6,49€ + 5,99€/κιλό, υπολογισμένα για ~1 κιλό)", text)
+        self.assertIn("τελικό με ελληνικό ΦΠΑ ≈", text)
+        self.assertIn(f"amazon.it/product-reviews/{ASIN}", text)
+        self.assertIn(f"keepa.com/#!product/8-{ASIN}", text)  # Keepa's number for Amazon.it
+
     def test_bulky_items_warn_about_delivery(self):
         deal = amazon_deal("Ninja Heißluftfritteuse AF300EU")
         self.assertTrue(ds.is_big(deal, CFG))
@@ -237,6 +284,10 @@ class LinksAndMessagesTest(unittest.TestCase):
             ("Samsung 990 PRO 2TB NVMe SSD", "Samsung 990 PRO 2TB"),
             ("[Amazon] Apple AirPods Pro 2 mit USB-C", "Apple AirPods Pro 2"),
             ("Bosch Smart Home Starter-Set Heizung II mit 8 Thermostaten", "Bosch Smart Home"),
+            ("Robot aspirateur Roborock Q10 S5 avec station de vidage", "Roborock Q10 S5"),
+            ("Auriculares Sony WH-1000XM5 con cancelación de ruido", "Sony WH-1000XM5"),
+            ("Cuffie Bose QuietComfort Ultra per musica", "Bose QuietComfort"),
+            ("Thermaltake TH420 V2 Ultra ARG... Sync All-In-One Liquid Cooler", "Thermaltake TH420 V2"),
         ]:
             self.assertEqual(ds.search_name(title, CFG), name)
 

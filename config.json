@@ -5,8 +5,12 @@
   "min_temperature": 150,
   "hot_tier": {"min_temperature": 300, "min_drop_percent": 25},
   "shops": {
-    "amazon.de": {"free_from": 59, "delivery_eur": 12.48, "vat_factor": 1.042}
+    "amazon.de": {"free_from": 59, "per_parcel_eur": 6.49, "per_kg_eur": 5.99, "vat_factor": 1.042},
+    "amazon.it": {"free_from": null, "per_parcel_eur": 6.49, "per_kg_eur": 5.99, "vat_factor": 1.016},
+    "amazon.fr": {"free_from": null, "per_parcel_eur": 6.49, "per_kg_eur": 5.99, "vat_factor": 1.033},
+    "amazon.es": {"free_from": null, "per_parcel_eur": 6.49, "per_kg_eur": 5.99, "vat_factor": 1.025}
   },
+  "parcel_kg": {"small": 1, "medium": 5, "large": 15},
   "forwarding": {
     "min_usual_price_eur": 150,
     "cost_eur": {"small": 32, "medium": 45, "large": 110},
@@ -27,7 +31,8 @@
       "words": [
         "PlayStation", "PS5", "Xbox", "Nintendo", "Steam Deck", "ROG Ally", "Legion Go",
         "Meta Quest", "DualSense", "Gamepad", "Controller", "Gaming",
-        "κονσόλα", "χειριστήριο", "Console"
+        "κονσόλα", "χειριστήριο", "Console",
+        "Manette", "Consola"
       ]
     },
     "ενέργεια & σπίτι": {
@@ -37,7 +42,11 @@
         "Powerstation", "Power Station", "Solargenerator", "Balkonkraftwerk", "Solarmodul", "Wechselrichter",
         "Stromspeicher", "Batteriespeicher", "Klimaanlage", "Klimagerät", "Split-Klima", "Wärmepumpe",
         "Thermostat", "Back-UPS", "Smart-UPS", "USV-Anlage", "Shelly", "Smart Home",
-        "κλιματιστικ", "αντλία θερμότητας", "θερμοστάτ", "φωτοβολταϊκ", "power station", "inverter", "Air Conditioner", "Heat Pump", "Solar Panel"
+        "κλιματιστικ", "αντλία θερμότητας", "θερμοστάτ", "φωτοβολταϊκ", "power station", "inverter", "Air Conditioner", "Heat Pump", "Solar Panel",
+        "Climatiseur", "Pompe à chaleur", "Panneau solaire", "Station électrique", "Station d'énergie", "Générateur solaire", "Onduleur",
+        "Aire acondicionado", "Bomba de calor", "Panel solar", "Estación de energía", "Estación eléctrica", "Generador solar", "Termostato", "Inversor",
+        "Condizionatore", "Climatizzatore", "Pompa di calore", "Pannello solare", "Stazione elettrica", "Stazione di alimentazione",
+        "Generatore solare", "Gruppo di continuità"
       ]
     },
     "σπίτι & κουζίνα": {
@@ -54,7 +63,18 @@
         "Luftreiniger", "Luftentfeuchter", "Ventilator", "Heizlüfter", "Bügeleisen", "Dampfreiniger",
         "Waschmaschine", "Wäschetrockner", "Geschirrspüler", "Spülmaschine", "Kühlschrank",
         "Gefrierschrank", "Matratze", "Bettdecke", "Kopfkissen",
-        "φριτέζα", "καφετιέρα", "μηχανή espresso", "παγωτομηχανή", "pop corn", "σκούπα", "πλυντήριο", "ψυγείο", "μπλέντερ", "βραστήρα", "τοστιέρα", "αφυγραντήρ", "ανεμιστήρ", "στρώμα", "Coffee Machine", "Ice Cream Maker", "Robot Vacuum", "Vacuum Cleaner", "Blender", "Kettle"
+        "φριτέζα", "καφετιέρα", "μηχανή espresso", "παγωτομηχανή", "pop corn", "σκούπα", "πλυντήριο", "ψυγείο", "μπλέντερ", "βραστήρα", "τοστιέρα", "αφυγραντήρ", "ανεμιστήρ", "στρώμα", "Coffee Machine", "Ice Cream Maker", "Robot Vacuum", "Vacuum Cleaner", "Blender", "Kettle",
+        "Friteuse", "Machine à café", "Cafetière", "Expresso", "Robot cuiseur", "Robot pâtissier", "Mixeur", "Bouilloire",
+        "Grille-pain", "Aspirateur", "Nettoyeur vapeur", "Purificateur", "Déshumidificateur", "Ventilateur", "Lave-linge",
+        "Sèche-linge", "Lave-vaisselle", "Réfrigérateur", "Congélateur", "Matelas", "Micro-ondes", "Sorbetière",
+        "Fer à repasser", "Centrale vapeur", "Autocuiseur", "Gaufrier",
+        "Freidora", "Cafetera", "Máquina de café", "Robot de cocina", "Batidora", "Hervidor", "Tostadora", "Aspirador",
+        "Purificador", "Deshumidificador", "Ventilador", "Lavadora", "Secadora", "Lavavajillas", "Frigorífico",
+        "Congelador", "Colchón", "Microondas", "Heladera", "Olla rápida", "Olla a presión", "Sandwichera", "Gofrera",
+        "Friggitrice", "Macchina da caffè", "Macchina per caffè", "Caffettiera", "Robot da cucina", "Frullatore",
+        "Bollitore", "Tostapane", "Aspirapolvere", "Purificatore", "Deumidificatore", "Ventilatore", "Lavatrice",
+        "Asciugatrice", "Lavastoviglie", "Frigorifero", "Congelatore", "Materasso", "Microonde", "Gelatiera",
+        "Ferro da stiro", "Pentola a pressione"
       ]
     },
     "ακουστικά & ηχεία": {
@@ -63,7 +83,10 @@
       "words": [
         "Kopfhörer", "Headphones", "Earbuds", "In-Ear", "Over-Ear", "AirPods", "WH-1000", "WF-1000",
         "QuietComfort", "Galaxy Buds", "Pixel Buds", "Lautsprecher", "Speaker", "Partybox", "Boombox",
-        "ακουστικά", "ηχείο", "ηχεία"
+        "ακουστικά", "ηχείο", "ηχεία",
+        "Casque audio", "Casque sans fil", "Casque Bluetooth", "Casque gaming", "Casque gamer", "Casque à réduction",
+        "Écouteurs", "Enceinte", "Auriculares", "Altavoz", "Cuffie", "Auricolari", "Altoparlante", "Cassa Bluetooth",
+        "Cassa portatile"
       ]
     },
     "δίκτυο & home server": {
@@ -74,7 +97,9 @@
         "FRITZ!Box", "FRITZ!Repeater", "Router", "Mesh-WLAN", "Mesh WLAN", "Mesh-System", "Repeater",
         "Access Point", "Netzwerk-Switch", "PoE-Switch", "Gigabit Switch", "Raspberry Pi",
         "Mac mini", "Mini-PC", "Mini PC",
-        "δρομολογητ", "mesh wifi"
+        "δρομολογητ", "mesh wifi",
+        "Routeur", "Répéteur", "Point d'accès", "Switch réseau", "Serveur NAS", "Repetidor", "Punto de acceso",
+        "Switch de red", "Servidor NAS", "Ripetitore", "Switch di rete", "Server NAS", "Switch PoE"
       ]
     },
     "υπολογιστές (κομμάτια & περιφερειακά)": {
@@ -85,17 +110,27 @@
         "Arbeitsspeicher", "DDR5", "Ryzen", "Core i5", "Core i7", "Core i9", "Core Ultra", "Mainboard",
         "Tastatur", "Keyboard", "Maus", "Mouse", "Webcam", "Dockingstation", "Drucker", "CPU",
         "PC-Gehäuse", "Wasserkühlung", "ASUS ROG", "Corsair", "Logitech",
-        "κάρτα γραφικών", "μνήμη ram", "πληκτρολόγιο", "ποντίκι", "εκτυπωτ", "επεξεργαστ", "μητρική"
+        "κάρτα γραφικών", "μνήμη ram", "πληκτρολόγιο", "ποντίκι", "εκτυπωτ", "επεξεργαστ", "μητρική",
+        "Docking Station", "Liquid Cooler",
+        "Carte graphique", "Clavier", "Souris", "Imprimante", "Processeur", "Carte mère", "Boîtier PC", "Mémoire RAM",
+        "Watercooling", "Refroidissement liquide", "Station d'accueil",
+        "Tarjeta gráfica", "Teclado", "Ratón", "Impresora", "Procesador", "Placa base", "Caja PC", "Memoria RAM",
+        "Refrigeración líquida",
+        "Scheda video", "Scheda grafica", "Tastiera", "Stampante", "Processore", "Scheda madre", "Case PC",
+        "Dissipatore", "Raffreddamento a liquido"
       ]
     },
     "αυτοκίνητο & μπαγκαζιέρες": {
       "min_usual_price_eur": 40,
-      "categories": ["auto-motorrad"],
+      "categories": ["auto-motorrad", "auto-moto"],
       "words": [
         "Dachbox", "Dachkoffer", "Skibox", "Dachträger", "Relingträger", "Grundträger", "roof box",
         "Fahrradträger", "Heckträger", "Kupplungsträger", "Dashcam", "Dash Cam", "Starthilfe",
         "Autostaubsauger", "Auto-Staubsauger", "Reifendruck", "Kompressor",
-        "μπαγκαζιέρα", "σχάρα οροφής", "κάμερα αυτοκινήτου", "εκκινητ", "σκουπάκι αυτοκινήτου"
+        "μπαγκαζιέρα", "σχάρα οροφής", "κάμερα αυτοκινήτου", "εκκινητ", "σκουπάκι αυτοκινήτου",
+        "Coffre de toit", "Barres de toit", "Porte-vélo", "Caméra embarquée", "Booster de batterie", "Booster de démarrage",
+        "Compresseur", "Cofre de techo", "Barras de techo", "Portabicicletas", "Arrancador", "Compresor",
+        "Box tetto", "Box da tetto", "Barre portatutto", "Portabici", "Avviatore", "Compressore"
       ]
     },
     "γυμναστική & συμπληρώματα": {
@@ -104,7 +139,10 @@
       "words": [
         "Kreatin", "Creatin", "Whey", "Protein", "Hantel", "Kettlebell", "Hantelbank", "Trainingsbank",
         "Klimmzug", "Laufband", "Rudergerät", "Crosstrainer", "Heimtrainer", "Spinningbike", "Indoor Bike",
-        "πρωτεΐν", "κρεατίν", "αλτήρ", "πάγκος γυμναστικής", "διάδρομος γυμναστικής"
+        "πρωτεΐν", "κρεατίν", "αλτήρ", "πάγκος γυμναστικής", "διάδρομος γυμναστικής",
+        "Haltère", "Banc de musculation", "Tapis de course", "Rameur", "Vélo d'appartement", "Barre de traction",
+        "Mancuerna", "Banco de pesas", "Cinta de correr", "Máquina de remo", "Bicicleta estática", "Barra de dominadas",
+        "Manubri", "Panca piana", "Panca multifunzione", "Tapis roulant", "Vogatore", "Cyclette", "Sbarra per trazioni"
       ]
     },
     "εργονομία γραφείου": {
@@ -113,7 +151,11 @@
       "words": [
         "Bürostuhl", "Schreibtischstuhl", "Ergonomischer Stuhl", "Stehschreibtisch", "Sitz-Steh",
         "höhenverstellbarer Schreibtisch", "Höhenverstellbarer Schreibtisch", "Schreibtisch",
-        "καρέκλα γραφείου", "ηλεκτρικό γραφείο", "standing desk", "Office Chair"
+        "καρέκλα γραφείου", "ηλεκτρικό γραφείο", "standing desk", "Office Chair",
+        "Chaise de bureau", "Fauteuil de bureau", "Fauteuil gamer", "Fauteuil gaming", "Bureau assis-debout",
+        "Bureau réglable", "Bureau électrique", "Silla de oficina", "Silla ergonómica", "Silla gaming", "Silla gamer",
+        "Escritorio elevable", "Escritorio regulable", "Sedia da ufficio", "Sedia ergonomica", "Sedia gaming",
+        "Scrivania regolabile", "Scrivania elettrica"
       ]
     },
     "χρήσιμα καθημερινά": {
@@ -123,7 +165,13 @@
         "Powerbank", "Ladegerät", "Ladestation", "Taschenlampe", "Stirnlampe", "Rucksack", "Reisekoffer",
         "Hartschalenkoffer", "Handgepäck", "Trolley", "Thermobecher", "Isolierflasche", "Personenwaage",
         "Steckdosenleiste", "Smart Plug",
-        "φορτιστ", "φακός", "σακίδιο", "βαλίτσα", "ζυγαριά", "Charger", "Power Bank", "Backpack", "Suitcase", "Flashlight"
+        "φορτιστ", "φακός", "σακίδιο", "βαλίτσα", "ζυγαριά", "Charger", "Power Bank", "Backpack", "Suitcase", "Flashlight",
+        "Batterie externe", "Chargeur", "Lampe torche", "Lampe frontale", "Sac à dos", "Valise", "Bouteille isotherme",
+        "Pèse-personne", "Multiprise", "Prise connectée",
+        "Batería externa", "Cargador", "Linterna", "Mochila", "Maleta", "Botella térmica", "Báscula", "Regleta",
+        "Enchufe inteligente",
+        "Batteria esterna", "Caricabatterie", "Caricatore", "Torcia", "Zaino", "Valigia", "Borraccia termica",
+        "Bilancia pesapersone", "Ciabatta elettrica", "Multipresa", "Presa smart", "Presa intelligente"
       ]
     }
   },
@@ -162,9 +210,12 @@
   ],
   "used_words": [
     "refurbished", "generalüberholt", "B-Ware", "gebraucht", "Warehouse", "renewed",
-    "Retoure", "reconditioned", "Vorführ", "μεταχειρισμ", "ανακατασκευασμ"
+    "Retoure", "reconditioned", "Vorführ", "μεταχειρισμ", "ανακατασκευασμ",
+    "reconditionné", "d'occasion", "Seconde Main", "reacondicionado", "segunda mano", "usado",
+    "ricondizionato", "seconda mano", "usato"
   ],
-  "like_new_words": ["wie neu", "like new", "neuwertig", "hervorragend", "exzellent", "excellent", "Renewed Premium", "σαν καινούργιο", "άψογη", "άριστη κατάσταση"],
+  "like_new_words": ["wie neu", "like new", "neuwertig", "hervorragend", "exzellent", "excellent", "Renewed Premium", "σαν καινούργιο", "άψογη", "άριστη κατάσταση",
+                     "comme neuf", "como nuevo", "come nuovo", "excelente", "eccellente"],
   "skroutz_categories": [
     "27/pc-hardware",
     "72/diktyaka",
@@ -199,19 +250,25 @@
     "Serverschrank", "Netzwerkschrank", "Rackmount", "Rackmontage", "Hutschiene",
     "Monitor", "Bildschirm", "QD-OLED", "Laptop", "Notebook", "MacBook", "Chromebook",
     "Fernseher", "Smart TV", "Smart-TV", "OLED TV", "OLED-TV", "QLED", "4K TV", "UHD TV", "Soundbar",
-    "οθόνη", "τηλεόραση", "ηχομπάρα", "λάπτοπ", "φορητός υπολογιστής"
+    "οθόνη", "τηλεόραση", "ηχομπάρα", "λάπτοπ", "φορητός υπολογιστής",
+    "Sélection de", "Selección de", "Recopilación de", "Selezione di",
+    "PC portable", "Ordinateur portable", "Ordenador portátil", "Portátil gaming", "Portátil gamer",
+    "PC portatile", "Computer portatile", "Vivobook", "Zenbook", "IdeaPad", "ThinkPad", "ThinkBook", "Zephyrus",
+    "Inspiron", "EliteBook", "ProBook", "Galaxy Book", "Surface Pro", "Predator Helios",
+    "Moniteur", "Ecran PC", "Ecran gamer", "Ecran gaming", "Téléviseur", "Televisor", "Televisore", "TV LED",
+    "Barre de son", "Barra de sonido"
   ],
   "sources": {
     "mydealz": true,
     "preisjaeger": true,
     "camel_de": true,
     "insomnia": false,
-    "dealabs": false,
-    "chollometro": false,
+    "dealabs": true,
+    "chollometro": true,
     "pepper_nl": false,
     "pepper_pl": false,
-    "camel_it": false,
-    "camel_es": false,
-    "camel_fr": false
+    "camel_it": true,
+    "camel_es": true,
+    "camel_fr": true
   }
 }

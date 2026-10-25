@@ -39,13 +39,13 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 
 # Deal communities (Pepper network). Each deal carries its price and the
 # cheapest price elsewhere ("nextBestPrice"), which we use as the usual price.
-# mydealz and preisjaeger are read from their "hot" lists (deals the community voted
-# over 100°), since only those can reach the config's min_temperature.
+# mydealz, preisjaeger, dealabs and chollometro are read from their "hot" lists (deals the
+# community voted over 100°), since only those can reach the config's min_temperature.
 PEPPER_SITES = {
     "mydealz":     ("🇩🇪", "https://www.mydealz.de/hot", "€"),
     "preisjaeger": ("🇦🇹", "https://www.preisjaeger.at/", "€"),
-    "dealabs":     ("🇫🇷", "https://www.dealabs.com/nouveaux", "€"),
-    "chollometro": ("🇪🇸", "https://www.chollometro.com/nuevos", "€"),
+    "dealabs":     ("🇫🇷", "https://www.dealabs.com/hot", "€"),
+    "chollometro": ("🇪🇸", "https://www.chollometro.com/populares", "€"),
     "pepper_nl":   ("🇳🇱", "https://nl.pepper.com/nieuw", "€"),
     "pepper_pl":   ("🇵🇱", "https://www.pepper.pl/nowe", "zł"),
 }
@@ -79,9 +79,13 @@ PRICE_ERROR = re.compile(
     re.IGNORECASE)
 
 # Posters mark record lows in the title; shown as evidence, not used as a filter.
-RECORD_LOW = re.compile(r"bestpreis|tiefstpreis|allzeittief|all[- ]time[- ]low|niedrigster preis", re.IGNORECASE)
+RECORD_LOW = re.compile(
+    r"bestpreis|tiefstpreis|allzeittief|all[- ]time[- ]low|niedrigster preis|"
+    r"prix le plus bas|plus bas historique|mínimo histórico|precio mínimo|minimo storico|prezzo minimo",
+    re.IGNORECASE)
 
 AMAZON_ASIN = re.compile(r"amazon\.[a-z.]+/(?:[^/?]+/)?(?:dp|gp/product)/([A-Z0-9]{10})")
+KEEPA_DOMAINS = {"amazon.de": 3, "amazon.fr": 4, "amazon.it": 8, "amazon.es": 9}  # Keepa's number for each Amazon
 AMAZON_SHORT_HOSTS = {"amzn.eu", "amzn.to"}
 
 
@@ -278,19 +282,20 @@ def unique_products(deals):
 
 
 def shop_terms(deal, cfg):
-    """How the deal's shop reaches Greece: (order value for free delivery, delivery fee below it,
-    forwarded, price factor for Greek VAT).
+    """How the deal's shop reaches Greece: (order value for free delivery, delivery rate below it
+    as (per parcel, per kg), forwarded, price factor for Greek VAT).
 
     German shops that don't ship to Greece go through a parcel forwarder, so their delivery
     is never free and its fee depends on the parcel's size. None if the shop can't reach Greece.
     """
     if deal.get("local"):
-        return 0, 0, False, 1.0
+        return 0, None, False, 1.0
     host = deal.get("shop_host", "").lower().removeprefix("www.")
     is_host = lambda domain: host == domain or host.endswith("." + domain)
     for domain, terms in cfg["shops"].items():
         if is_host(domain):
-            return terms["free_from"], terms["delivery_eur"], False, terms.get("vat_factor", 1.0)
+            free_from = float("inf") if terms["free_from"] is None else terms["free_from"]  # None: never free
+            return free_from, (terms["per_parcel_eur"], terms["per_kg_eur"]), False, terms.get("vat_factor", 1.0)
     if any(is_host(domain) for domain in cfg["forwarding"]["shops"]):
         return float("inf"), None, True, 1.0  # bought with German VAT, then forwarded
     return None
@@ -335,7 +340,7 @@ def is_big(deal, cfg):
     terms = shop_terms(deal, cfg)
     if terms is None:
         return False
-    deal["free_from"], delivery, deal["forwarded"], deal["vat_factor"] = terms  # all shown in the message
+    deal["free_from"], deal["delivery_rate"], deal["forwarded"], deal["vat_factor"] = terms  # all shown in the message
     deal["topic"] = matching_topic(deal, cfg)
     if not deal["topic"]:
         return False
@@ -343,6 +348,11 @@ def is_big(deal, cfg):
     size = forwarding["size"].get(deal["topic"], "small")
     if deal["forwarded"]:
         delivery = forwarding["cost_eur"][size]
+    elif deal["delivery_rate"]:  # the shop charges per parcel and per kg; the topic says how heavy it usually is
+        deal["parcel_kg"] = cfg["parcel_kg"][size]
+        delivery = deal["delivery_rate"][0] + deal["delivery_rate"][1] * deal["parcel_kg"]
+    else:
+        delivery = 0
     # big parcels may cost extra to send to Greece even above the free-delivery minimum
     deal["bulky"] = size != "small" and not deal.get("local")
     deal["delivery"] = delivery if deal["price"] is not None and deal["price"] < deal["free_from"] else 0
@@ -376,7 +386,9 @@ UNIT = re.compile(r"\d+(?:[.,]\d+)?-?(?:tlg|teilig|stk|stück|l|ml|w|kw|wh|kwh|m
 def search_name(title, cfg):
     """Brand and model from a deal's title ("Ninja CRISPi FN101"), to look the product up in Greek shops."""
     text = re.sub(r"[\[\(].*?[\]\)]", " ", title)
-    text = re.split(r"\s(?:für|ab|bei|um|nur|statt|mit|inkl\.?)\s|\s[|/–-]\s|[:,;]", text, maxsplit=1)[0]
+    text = re.sub(r"\S*(?:\.\.\.|…).*", " ", text)  # camelcamelcamel cuts long titles, mid-word: "Ultra ARG...Sync"
+    text = re.split(r"\s(?:für|ab|bei|um|nur|statt|mit|inkl\.?|pour|avec|dès|para|con|desde|per|da)\s|\s[|/–-]\s|[:,;]",
+                    text, maxsplit=1)[0]
     words = text.split()
     brands = {plain(b) for b in cfg["brands"]}
     words = words[next((i for i, w in enumerate(words) if plain(w) in brands), 0):]
@@ -433,9 +445,15 @@ def format_deal(d, cfg):
         delivery_line = f"📦 {shop}: μόνο μέσω προώθησης (Forward2me / ColisExpat), 1–2 εβδομάδες"
     elif d.get("local"):
         delivery_line = ""
+    elif d.get("free_from") == float("inf"):
+        per_parcel, per_kg = d["delivery_rate"]
+        kg = d["parcel_kg"]
+        delivery_line = (f"🚚 {shop}: χωρίς δωρεάν μεταφορικά για Ελλάδα ({fmt_price(per_parcel, '€')} + "
+                         f"{fmt_price(per_kg, '€')}/κιλό, υπολογισμένα για ~{kg} {'κιλό' if kg == 1 else 'κιλά'})")
     else:
         delivery_line = f"🚚 {shop}: " + (f"δωρεάν μεταφορικά από {d['free_from']}€" if delivery
                                           else "δωρεάν μεταφορικά για Ελλάδα")
+    if delivery_line and not d.get("forwarded"):
         if d.get("vat_factor", 1.0) != 1.0 and d["price"]:
             landed = d["price"] * d["vat_factor"] + delivery / rate
             delivery_line += f" · τελικό με ελληνικό ΦΠΑ ≈ {fmt_price(landed, cur)}"
@@ -452,8 +470,8 @@ def format_deal(d, cfg):
     extra = d.get("extra_url", "")
     if "camelcamelcamel" in extra:
         links.append(f'<a href="{html.escape(extra)}">📈 ιστορικό</a>')
-    elif asin:
-        links.append(f'<a href="https://keepa.com/#!product/3-{asin.group(1)}">📈 ιστορικό</a>')
+    elif asin and (keepa := KEEPA_DOMAINS.get(urlsplit(d["url"]).netloc.removeprefix("www."))):
+        links.append(f'<a href="https://keepa.com/#!product/{keepa}-{asin.group(1)}">📈 ιστορικό</a>')
     if extra and "camelcamelcamel" not in extra:
         links.append(f'<a href="{html.escape(extra)}">💬 συζήτηση</a>')
 
