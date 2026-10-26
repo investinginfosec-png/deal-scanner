@@ -85,7 +85,7 @@ RECORD_LOW = re.compile(
     r"prix le plus bas|plus bas historique|mínimo histórico|precio mínimo|minimo storico|prezzo minimo",
     re.IGNORECASE)
 
-AMAZON_ASIN = re.compile(r"amazon\.[a-z.]+/(?:[^/?]+/)?(?:dp|gp/product)/([A-Z0-9]{10})")
+AMAZON_ASIN = re.compile(r"amazon\.[a-z.]+/(?:[^/?]+/){0,3}?(?:dp|gp/product)/([A-Z0-9]{10})")  # also /-/en/dp/
 KEEPA_DOMAINS = {"amazon.de": 3, "amazon.fr": 4, "amazon.it": 8, "amazon.es": 9}  # Keepa's number for each Amazon
 AMAZON_SHORT_HOSTS = {"amzn.eu", "amzn.to"}
 
@@ -149,11 +149,11 @@ def pepper_deals(session, name, cfg):
             ref = th.get("nextBestPrice") or 0
             pct = th.get("percentage") or 0
             ref_kind = "next_shop"
-            if ref <= price and 0 < pct < 100 and price > 0:
-                ref, ref_kind = price / (1 - pct / 100), "poster"  # discount stated by the poster
+            if not ref and 0 < pct < 100 and price > 0:  # no other shop given: the poster's stated discount
+                ref, ref_kind = price / (1 - pct / 100), "poster"
             title = html.unescape(th.get("title", ""))
             is_error = bool(PRICE_ERROR.search(title))
-            if (ref <= price or MONTHLY.search(title)) and not is_error:
+            if MONTHLY.search(title) or (ref <= price and not is_error):  # another shop is as cheap
                 continue
             deals.append({
                 "key": f"{name}:{th['threadId']}",
@@ -298,15 +298,17 @@ def unique_products(deals):
     return [d for d in deals if any(d is k for k in kept.values())]
 
 
-def add_amazon_de_prices(deals, prices):
-    """Remember the Amazon.de prices among `deals` (product id → lowest price).
+def add_amazon_de_prices(deals, prices, cfg):
+    """Remember the Amazon.de prices among `deals` (product id → lowest price), leaving out price
+    errors and used items, which say nothing about a new item's usual price.
 
     Amazon's terms forbid robots on its pages and camelcamelcamel's product pages refuse
     scripts, so Amazon.de prices come only from what the sources list in the same run.
     """
     for d in deals:
         asin = AMAZON_ASIN.search(d["url"])
-        if asin and d["price"] and urlsplit(d["url"]).netloc.removeprefix("www.") == "amazon.de":
+        if (asin and d["price"] and urlsplit(d["url"]).netloc.removeprefix("www.") == "amazon.de"
+                and not d["price_error"] and not is_used(d["title"], cfg)):
             prices[asin.group(1)] = min(d["price"], prices.get(asin.group(1), d["price"]))
 
 
@@ -352,8 +354,7 @@ def remember_prices(deals, history, today, cfg):
     """
     for d in deals:
         asin = AMAZON_ASIN.search(d["url"])
-        if (asin and d["price"] and "delivery" in d and not d["price_error"]
-                and not mentions(d["title"], cfg["used_words"])):
+        if asin and d["price"] and "delivery" in d and not d["price_error"] and not is_used(d["title"], cfg):
             cost = round(landed_cost(d), 2)
             days = history.setdefault(asin.group(1), {})
             days[today.isoformat()] = min(cost, days.get(today.isoformat(), cost))
@@ -407,8 +408,10 @@ def shop_terms(deal, cfg):
 
 
 def plain(text):
-    """Lowercase without accents, so "Ακουστικά", "ΑΚΟΥΣΤΙΚΑ" and "ακουστικα" match alike."""
-    return "".join(c for c in unicodedata.normalize("NFD", text.lower()) if not unicodedata.combining(c))
+    """Lowercase without accents, so "Ακουστικά", "ΑΚΟΥΣΤΙΚΑ" and "ακουστικα" match alike
+    ("De’Longhi" as "De'Longhi", "WD_BLACK" as "WD BLACK")."""
+    text = text.lower().replace("’", "'").replace("_", " ")
+    return "".join(c for c in unicodedata.normalize("NFD", text) if not unicodedata.combining(c))
 
 
 def mentions(text, words):
@@ -416,25 +419,80 @@ def mentions(text, words):
     return any(plain(w) in text for w in words)
 
 
+def names(text, words):
+    """Whether the text has one of the words as a whole word (not inside another word)."""
+    text = plain(text)
+    return any(re.search(rf"(?<!\w){re.escape(plain(w))}(?!\w)", text) for w in words)
+
+
+# Where a title starts listing what the product fits or where it runs ("Controller für PS5",
+# "Ladegerät für MacBook, Laptop", "Oblivion Remastered sur PS5"): brands and kinds of product
+# named after it describe other products.
+FITS = re.compile(r"\s(?:für|for|pour|sur|para|per|compatible|kompatibel|compatibile|για)\s", re.IGNORECASE)
+
+
+def own_part(title):
+    """The part of a title about the product itself, before it says what the product fits."""
+    return FITS.split(title, maxsplit=1)[0]
+
+
+def excluded(title, cfg):
+    """Whether the title is a kind of product we don't want (other tools track monitors, laptops, …)
+    or a post about a whole shop's sale. Kinds count only in the title's own part, and not in
+    accessory phrases like "Laptop-Rucksack" or "Studio-Monitor Kopfhörer"."""
+    own = plain(own_part(title))
+    for phrase in cfg["exclude_exceptions"]:
+        own = own.replace(plain(phrase), " ")
+    return mentions(own, cfg["exclude_words"]) or mentions(title, cfg["whole_shop_words"])
+
+
 def matching_topic(deal, cfg):
-    """Name of the chosen topic the deal fits, by its community category or else a word in its title."""
-    for name, topic in cfg["topics"].items():
-        if deal.get("category") in topic.get("categories", []):
-            return name
-    for name, topic in cfg["topics"].items():
-        if mentions(deal["title"], topic.get("words", [])):
-            return name
-    return None
+    """Name of the chosen topic the deal fits: by a word in the title's own part, else by its
+    community category, else by a word anywhere in the title. Topics are tried in config order."""
+    topics = cfg["topics"].items()
+    own = own_part(deal["title"])
+    return (next((name for name, t in topics if mentions(own, t.get("words", []))), None)
+            or next((name for name, t in topics if deal.get("category") in t.get("categories", [])), None)
+            or next((name for name, t in topics if mentions(deal["title"], t.get("words", []))), None))
 
 
 def has_known_brand(title, cfg):
-    """Whether the title names one of the config's brands, as a whole word."""
-    return any(re.search(rf"(?<!\w){re.escape(plain(b))}(?!\w)", plain(title)) for b in cfg["brands"])
+    """Whether the title's own part names one of the config's brands, as a whole word: a brand
+    named only as what the product fits ("Controller für PS5") is not the product's."""
+    return names(own_part(title), cfg["brands"])
+
+
+def is_used(title, cfg):
+    """Whether the title says the item is used or refurbished."""
+    text = plain(title)
+    for phrase in cfg["not_used_words"]:  # "ungebraucht" (unused) contains "gebraucht" (used)
+        text = text.replace(plain(phrase), " ")
+    return mentions(text, cfg["used_words"])
 
 
 def good_condition(title, cfg):
     """New items pass; used or refurbished ones only when the title says they are like new."""
-    return not mentions(title, cfg["used_words"]) or mentions(title, cfg["like_new_words"])
+    return not is_used(title, cfg) or mentions(title, cfg["like_new_words"])
+
+
+def single_game(title, cfg):
+    """Whether the title is a single video game, not a console or an accessory: it names a console,
+    but no gaming hardware and no brand besides the consoles', and doesn't start with the console."""
+    text = plain(title)
+    consoles = [plain(c) for c in cfg["game_consoles"]]
+    if not any(c in text for c in consoles) or any(text.startswith(c) for c in consoles):
+        return False
+    other_brands = [b for b in cfg["brands"] if plain(b) not in consoles]
+    return not names(text, cfg["game_hardware_words"]) and not names(text, other_brands)
+
+
+def parcel_size(deal, cfg):
+    """small, medium or large: by the words for heavy items (washing machines, gaming chairs, …),
+    else by the deal's topic."""
+    for size, words in cfg["size_words"].items():
+        if mentions(own_part(deal["title"]), words):
+            return size
+    return cfg["forwarding"]["size"].get(deal["topic"], "small")
 
 
 def keyboard_layout(deal, cfg):
@@ -447,7 +505,7 @@ def keyboard_layout(deal, cfg):
 
 
 def is_big(deal, cfg):
-    if mentions(f"{deal['title']} {deal['where']}", cfg.get("exclude_words", [])):
+    if excluded(deal["title"], cfg) or single_game(deal["title"], cfg):
         return False
     if not has_known_brand(deal["title"], cfg) or not good_condition(deal["title"], cfg):
         return False
@@ -458,11 +516,10 @@ def is_big(deal, cfg):
     deal["topic"] = matching_topic(deal, cfg)
     if not deal["topic"]:
         return False
-    forwarding = cfg["forwarding"]
-    size = forwarding["size"].get(deal["topic"], "small")
+    size = parcel_size(deal, cfg)
     if deal["forwarded"]:
-        delivery = forwarding["cost_eur"][size]
-    elif deal["delivery_rate"]:  # the shop charges per parcel and per kg; the topic says how heavy it usually is
+        delivery = cfg["forwarding"]["cost_eur"][size]
+    elif deal["delivery_rate"]:  # the shop charges per parcel and per kg; the parcel's size says how heavy
         deal["parcel_kg"] = cfg["parcel_kg"][size]
         delivery = deal["delivery_rate"][0] + deal["delivery_rate"][1] * deal["parcel_kg"]
     else:
@@ -472,10 +529,13 @@ def is_big(deal, cfg):
     deal["delivery"] = delivery if deal["price"] is not None and deal["price"] < deal["free_from"] else 0
     if deal.get("curated"):
         return True  # Greek community picks state no usual price: topic, brand and condition decide
-    if deal["price_error"] and not deal["forwarded"]:  # forwarded orders arrive too late for price errors
-        return True  # worth it even with a delivery fee, and too short-lived to wait for votes
-    if deal.get("temperature", cfg["min_temperature"]) < cfg["min_temperature"]:
+    # price errors are too short-lived to wait for votes, but must still be a real saving on
+    # something worth having; forwarded orders arrive too late for them
+    quick = deal["price_error"] and not deal["forwarded"]
+    if not quick and deal.get("temperature", cfg["min_temperature"]) < cfg["min_temperature"]:
         return False  # not (yet) approved by the community
+    if quick and not deal["ref"]:
+        return True  # no usual price to measure the drop against
     rate = TO_EUR.get(deal["cur"], 1.0)
     min_usual = cfg["topics"].get(deal["topic"], {}).get("min_usual_price_eur", cfg["min_usual_price_eur"])
     if deal["forwarded"]:  # forwarding only pays off on expensive items
@@ -485,9 +545,7 @@ def is_big(deal, cfg):
     cost = deal["price"] + deal["delivery"] / rate  # the delivery fee eats into the discount
     drop = 1 - cost / deal["ref"]
     saving_eur = (deal["ref"] - cost) * rate
-    # posts hundreds vote for are often record lows even when other shops are only a bit dearer
-    tier = cfg["hot_tier"] if deal.get("temperature", 0) >= cfg["hot_tier"]["min_temperature"] else cfg
-    return drop * 100 >= tier["min_drop_percent"] and saving_eur >= cfg["min_saving_eur"]
+    return drop * 100 >= cfg["min_drop_percent"] and saving_eur >= cfg["min_saving_eur"]
 
 
 def fmt_price(value, cur):
@@ -629,11 +687,36 @@ def send_telegram(cfg, text, silent=False):
                   text=text, parse_mode="HTML", disable_web_page_preview=True, disable_notification=silent)
 
 
-def send_deals(cfg, deals):
-    """One message per deal; those that need a parcel forwarder arrive without a sound."""
+def send_deals(cfg, deals, sent):
+    """One message per deal; those that need a parcel forwarder arrive without a sound.
+
+    Each deal goes into `sent` as soon as Telegram takes it, so when Telegram fails halfway
+    the deals already sent are still remembered and only the rest are tried again.
+    """
     for d in deals:
         send_telegram(cfg, format_deal(d, cfg), silent=bool(d.get("forwarded")))
+        sent.append(d)
         time.sleep(1)  # Telegram allows about one message a second per chat
+
+
+def remember_sent(seen, new, sent, unsent):
+    """seen.json after this run: the posts handled (all but those Telegram did not take) and,
+    with their delivered price, the products sent. Entries older than 30 days are dropped."""
+    now = int(time.time())
+    seen.update({d["key"]: now for d in new if not any(d is u for u in unsent)})
+    seen.update({f"product:{product_key(d)}": [now, None if d["price"] is None else round(landed_cost(d), 2)]
+                 for d in sent})
+    return {k: v for k, v in seen.items() if now - (v[0] if isinstance(v, list) else v) < 30 * 86400}
+
+
+def already_sent(deal, seen):
+    """Whether the deal's product was sent in the last 30 days, and this deal is not at least 10% cheaper."""
+    sent = seen.get(f"product:{product_key(deal)}")
+    if sent is None:
+        return False
+    if isinstance(sent, list) and sent[1] is not None and deal["price"] is not None:  # older entries kept no price
+        return landed_cost(deal) > sent[1] * 0.9
+    return True
 
 
 def runs_last_day():
@@ -781,7 +864,7 @@ def main():
             failed[name] = f"σφάλμα {getattr(getattr(e, 'response', None), 'status_code', None) or e.__class__.__name__}"
             continue
         resolve_short_shops(session, deals)
-        add_amazon_de_prices(deals, de_prices)
+        add_amazon_de_prices(deals, de_prices, cfg)
         big = [d for d in deals if is_big(d, cfg)]
         remember_prices(deals, history, today, cfg)
         counts.append(f"{name} {len(big)}/{len(deals)}")
@@ -795,14 +878,15 @@ def main():
             new.append(d)
     new.sort(key=lambda d: (not d["price_error"], d["price"] / d["ref"] if d["ref"] else 1))
     add_shop_links(session, new)
-    add_amazon_de_prices(new, de_prices)
+    add_amazon_de_prices(new, de_prices, cfg)
     remember_prices(new, history, today, cfg)  # community deals know their Amazon product only now
     # an Amazon.it/.fr/.es deal is no deal when Amazon.de sells the same product for less, nor one
     # whose product cost less in the last 30 days; one message per product, and none for a product
-    # another post already brought in the last 30 days; the posts left out are still remembered as seen below
+    # another post already brought in the last 30 days, unless 10% cheaper; the posts left out are
+    # still remembered as seen below
     worth = [d for d in new if not cheaper_on_amazon_de(d, de_prices, cfg)]
     real = [d for d in worth if not cheaper_lately(d, history, today)]
-    to_send = [d for d in unique_products(real) if f"product:{product_key(d)}" not in seen]
+    to_send = [d for d in unique_products(real) if not already_sent(d, seen)]
     left_out = ""
     if len(worth) < len(new):
         left_out += f", {len(new) - len(worth)} φθηνότερες στο Amazon.de"
@@ -821,25 +905,17 @@ def main():
 
     save_prices(history)
     if new:
-        if telegram_ready(cfg):
-            send_deals(cfg, to_send)
-        else:
-            log("Το Telegram δεν έχει ρυθμιστεί ακόμα· οι προσφορές γράφτηκαν μόνο στο found_deals.csv")
-
-        now = int(time.time())
-        seen.update({d["key"]: now for d in new})
-        seen.update({f"product:{product_key(d)}": now for d in to_send})
-        seen = {k: t for k, t in seen.items() if now - t < 30 * 86400}
-        STATE.write_text(json.dumps(seen), encoding="utf-8")
-        write_header = not FOUND_LOG.exists()
-        with FOUND_LOG.open("a", newline="", encoding="utf-8-sig") as f:
-            w = csv.writer(f)
-            if write_header:
-                w.writerow(["time", "drop_%", "price", "usual_price", "currency", "title", "store", "url"])
-            for d in to_send:
-                drop = round((1 - d["price"] / d["ref"]) * 100) if d["ref"] else ""
-                w.writerow([datetime.now().strftime("%Y-%m-%d %H:%M"), drop, d["price"],
-                            d["ref"] or "", d["cur"], d["title"], d["where"], d["url"]])
+        sent = []
+        try:
+            if telegram_ready(cfg):
+                send_deals(cfg, to_send, sent)
+            else:
+                log("Το Telegram δεν έχει ρυθμιστεί ακόμα· οι προσφορές γράφτηκαν μόνο στο found_deals.csv")
+                sent = to_send
+        finally:  # also when Telegram fails halfway: what was sent must not be sent again
+            unsent = [d for d in to_send if not any(d is s for s in sent)]
+            STATE.write_text(json.dumps(remember_sent(seen, new, sent, unsent)), encoding="utf-8")
+            log_found(sent)
 
     today = daily_status_due(cfg, datetime.now(timezone.utc))
     if today:
@@ -854,6 +930,19 @@ def main():
             # written daily even on quiet days, so the run commits daily and GitHub keeps the schedule
             STATUS.write_text(json.dumps({"last_status": today}), encoding="utf-8")
     return 0
+
+
+def log_found(sent):
+    """Add the sent deals to found_deals.csv, the history of sent deals."""
+    write_header = not FOUND_LOG.exists()
+    with FOUND_LOG.open("a", newline="", encoding="utf-8-sig") as f:
+        w = csv.writer(f)
+        if write_header:
+            w.writerow(["time", "drop_%", "price", "usual_price", "currency", "title", "store", "url"])
+        for d in sent:
+            drop = round((1 - d["price"] / d["ref"]) * 100) if d["ref"] else ""
+            w.writerow([datetime.now().strftime("%Y-%m-%d %H:%M"), drop, d["price"],
+                        d["ref"] or "", d["cur"], d["title"], d["where"], d["url"]])
 
 
 if __name__ == "__main__":

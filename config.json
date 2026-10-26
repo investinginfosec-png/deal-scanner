@@ -3,7 +3,6 @@
   "min_saving_eur": 10,
   "min_usual_price_eur": 80,
   "min_temperature": 150,
-  "hot_tier": {"min_temperature": 300, "min_drop_percent": 25},
   "shops": {
     "amazon.de": {"free_from": 59, "per_parcel_eur": 6.49, "per_kg_eur": 5.99, "vat_factor": 1.042},
     "amazon.it": {"free_from": null, "per_parcel_eur": 6.49, "per_kg_eur": 5.99, "vat_factor": 1.016},
@@ -11,6 +10,23 @@
     "amazon.es": {"free_from": null, "per_parcel_eur": 6.49, "per_kg_eur": 5.99, "vat_factor": 1.025}
   },
   "parcel_kg": {"small": 1, "medium": 5, "large": 15},
+  "size_words": {
+    "large": [
+      "Gaming-PC", "Gaming PC", "Desktop-PC", "PC-Gehäuse", "Boîtier PC", "Caja PC", "Case PC",
+      "Waschmaschine", "Wäschetrockner", "Geschirrspüler", "Spülmaschine", "Kühlschrank", "Gefrierschrank",
+      "Matratze", "Laufband", "Rudergerät", "Crosstrainer", "Heimtrainer", "Spinningbike", "Indoor Bike",
+      "Hantelbank", "Trainingsbank", "Klimaanlage", "Klimagerät", "Split-Klima", "Wärmepumpe",
+      "Balkonkraftwerk", "Solarmodul", "Stromspeicher", "Batteriespeicher", "Dachbox", "Dachkoffer",
+      "Lave-linge", "Sèche-linge", "Lave-vaisselle", "Réfrigérateur", "Congélateur", "Matelas", "Tapis de course",
+      "Rameur", "Vélo d'appartement", "Banc de musculation", "Climatiseur", "Pompe à chaleur", "Coffre de toit",
+      "Lavadora", "Secadora", "Lavavajillas", "Frigorífico", "Congelador", "Colchón", "Cinta de correr",
+      "Máquina de remo", "Bicicleta estática", "Banco de pesas", "Aire acondicionado", "Bomba de calor", "Cofre de techo",
+      "Lavatrice", "Asciugatrice", "Lavastoviglie", "Frigorifero", "Congelatore", "Materasso", "Tapis roulant",
+      "Vogatore", "Cyclette", "Panca piana", "Panca multifunzione", "Condizionatore", "Climatizzatore",
+      "Pompa di calore", "Box tetto", "Box da tetto",
+      "πλυντήριο", "ψυγείο", "στρώμα", "κλιματιστικ", "διάδρομος γυμναστικής", "πάγκος γυμναστικής", "μπαγκαζιέρα"
+    ]
+  },
   "forwarding": {
     "min_usual_price_eur": 150,
     "cost_eur": {"small": 32, "medium": 45, "large": 110},
@@ -25,6 +41,22 @@
     ]
   },
   "topics": {
+    "εργονομία γραφείου": {
+      "min_usual_price_eur": 80,
+      "categories": [],
+      "words": [
+        "Bürostuhl", "Schreibtischstuhl", "Ergonomischer Stuhl", "Stehschreibtisch", "Sitz-Steh",
+        "höhenverstellbarer Schreibtisch", "Höhenverstellbarer Schreibtisch", "Schreibtisch",
+        "Gaming-Stuhl", "Gaming Stuhl", "Gamingstuhl", "Gaming-Sessel", "Gaming Sessel", "Gamingsessel",
+        "Gaming Chair", "Gaming-Chair", "Gaming-Tisch", "Gaming Tisch", "Gaming Desk",
+        "καρέκλα γραφείου", "καρέκλα gaming", "ηλεκτρικό γραφείο", "standing desk", "Office Chair",
+        "Chaise de bureau", "Chaise gaming", "Chaise gamer", "Fauteuil de bureau", "Fauteuil gamer", "Fauteuil gaming",
+        "Bureau assis-debout", "Bureau réglable", "Bureau électrique", "Bureau gaming", "Bureau gamer",
+        "Silla de oficina", "Silla ergonómica", "Silla gaming", "Silla gamer",
+        "Escritorio elevable", "Escritorio regulable", "Escritorio gaming", "Sedia da ufficio", "Sedia ergonomica",
+        "Sedia gaming", "Poltrona gaming", "Scrivania regolabile", "Scrivania elettrica", "Scrivania gaming"
+      ]
+    },
     "κονσόλες & gaming": {
       "min_usual_price_eur": 40,
       "categories": ["gaming", "consoles-jeux-video", "consolas-y-videojuegos", "gry"],
@@ -42,7 +74,8 @@
         "Powerstation", "Power Station", "Solargenerator", "Balkonkraftwerk", "Solarmodul", "Wechselrichter",
         "Stromspeicher", "Batteriespeicher", "Klimaanlage", "Klimagerät", "Split-Klima", "Wärmepumpe",
         "Thermostat", "Back-UPS", "Smart-UPS", "USV-Anlage", "Shelly", "Smart Home",
-        "κλιματιστικ", "αντλία θερμότητας", "θερμοστάτ", "φωτοβολταϊκ", "power station", "inverter", "Air Conditioner", "Heat Pump", "Solar Panel",
+        "κλιματιστικ", "αντλία θερμότητας", "θερμοστάτ", "φωτοβολταϊκ", "power station", "Solar Inverter", "Solar-Inverter", "Hybrid Inverter", "Hybrid-Inverter",
+        "Microinverter", "Micro Inverter", "Inverter solare", "Inverter fotovoltaico", "Air Conditioner", "Heat Pump", "Solar Panel",
         "Climatiseur", "Pompe à chaleur", "Panneau solaire", "Station électrique", "Station d'énergie", "Générateur solaire", "Onduleur",
         "Aire acondicionado", "Bomba de calor", "Panel solar", "Estación de energía", "Estación eléctrica", "Generador solar", "Termostato", "Inversor",
         "Condizionatore", "Climatizzatore", "Pompa di calore", "Pannello solare", "Stazione elettrica", "Stazione di alimentazione",
@@ -63,7 +96,7 @@
         "Luftreiniger", "Luftentfeuchter", "Ventilator", "Heizlüfter", "Bügeleisen", "Dampfreiniger",
         "Waschmaschine", "Wäschetrockner", "Geschirrspüler", "Spülmaschine", "Kühlschrank",
         "Gefrierschrank", "Matratze", "Bettdecke", "Kopfkissen",
-        "φριτέζα", "καφετιέρα", "μηχανή espresso", "παγωτομηχανή", "pop corn", "σκούπα", "πλυντήριο", "ψυγείο", "μπλέντερ", "βραστήρα", "τοστιέρα", "αφυγραντήρ", "ανεμιστήρ", "στρώμα", "Coffee Machine", "Ice Cream Maker", "Robot Vacuum", "Vacuum Cleaner", "Blender", "Kettle",
+        "φριτέζα", "καφετιέρα", "μηχανή espresso", "παγωτομηχανή", "pop corn", "σκούπα", "πλυντήριο", "ψυγείο", "μπλέντερ", "βραστήρα", "τοστιέρα", "αφυγραντήρ", "ανεμιστήρ", "στρώμα", "Coffee Machine", "Ice Cream Maker", "Robot Vacuum", "Vacuum Cleaner", "Blender", "Electric Kettle",
         "Friteuse", "Machine à café", "Cafetière", "Expresso", "Robot cuiseur", "Robot pâtissier", "Mixeur", "Bouilloire",
         "Grille-pain", "Aspirateur", "Nettoyeur vapeur", "Purificateur", "Déshumidificateur", "Ventilateur", "Lave-linge",
         "Sèche-linge", "Lave-vaisselle", "Réfrigérateur", "Congélateur", "Matelas", "Micro-ondes", "Sorbetière",
@@ -145,19 +178,6 @@
         "Manubri", "Panca piana", "Panca multifunzione", "Tapis roulant", "Vogatore", "Cyclette", "Sbarra per trazioni"
       ]
     },
-    "εργονομία γραφείου": {
-      "min_usual_price_eur": 80,
-      "categories": [],
-      "words": [
-        "Bürostuhl", "Schreibtischstuhl", "Ergonomischer Stuhl", "Stehschreibtisch", "Sitz-Steh",
-        "höhenverstellbarer Schreibtisch", "Höhenverstellbarer Schreibtisch", "Schreibtisch",
-        "καρέκλα γραφείου", "ηλεκτρικό γραφείο", "standing desk", "Office Chair",
-        "Chaise de bureau", "Fauteuil de bureau", "Fauteuil gamer", "Fauteuil gaming", "Bureau assis-debout",
-        "Bureau réglable", "Bureau électrique", "Silla de oficina", "Silla ergonómica", "Silla gaming", "Silla gamer",
-        "Escritorio elevable", "Escritorio regulable", "Sedia da ufficio", "Sedia ergonomica", "Sedia gaming",
-        "Scrivania regolabile", "Scrivania elettrica"
-      ]
-    },
     "χρήσιμα καθημερινά": {
       "min_usual_price_eur": 30,
       "categories": [],
@@ -212,7 +232,19 @@
     "refurbished", "generalüberholt", "B-Ware", "gebraucht", "Warehouse", "renewed",
     "Retoure", "reconditioned", "Vorführ", "μεταχειρισμ", "ανακατασκευασμ",
     "reconditionné", "d'occasion", "Seconde Main", "reacondicionado", "segunda mano", "usado",
-    "ricondizionato", "seconda mano", "usato"
+    "ricondizionato", "seconda mano", "usato", "Refurb", "Amazon Resale"
+  ],
+  "not_used_words": ["ungebraucht", "non usato", "nunca usado"],
+  "game_consoles": ["PS5", "PS4", "PlayStation", "Nintendo", "Switch 2", "Switch/2", "Xbox", "XBO"],
+  "game_hardware_words": [
+    "Konsole", "Konsolen", "Spielkonsole", "Console", "Consola", "Controller", "Wireless-Controller", "Manette",
+    "Mando", "Gamepad", "DualSense", "DualShock", "Joy-Con", "Joy-Cons", "Headset", "Kopfhörer", "Casque",
+    "Auriculares", "Cuffie", "Lenkrad", "Volant", "Volante", "Racing Wheel", "Ladestation", "Ladegerät",
+    "Station de charge", "Estación de carga", "Stazione di ricarica", "SSD", "microSD", "Speicherkarte",
+    "Festplatte", "Kamera", "Camera", "Portal", "Fightstick", "Arcade Stick", "Flightstick", "Tastatur", "Maus",
+    "Clavier", "Souris", "Teclado", "Ratón", "Tastiera", "Mouse", "Keyboard", "Hülle", "Tasche", "Case",
+    "Funda", "Custodia", "Housse", "Ständer", "Halterung", "Akku", "Netzteil", "Adapter", "Kabel", "Cable",
+    "Slim", "Lite", "OLED", "Digital Edition", "Disc Edition", "Laufwerk", "Disc Drive", "Lecteur", "VR", "VR2"
   ],
   "barebone_words": ["Barebone", "NO RAM", "ohne RAM", "ohne Arbeitsspeicher", "sans RAM", "sin RAM", "senza RAM",
                      "without RAM", "w/o RAM", "χωρίς RAM"],
@@ -249,15 +281,24 @@
   "insomnia_days": 3,
   "daily_status_utc_hour": 17,
   "expected_runs_per_day": 48,
+  "whole_shop_words": ["Sammeldeal", "z.B.", "z. B.", "Sélection de", "Selección de", "Recopilación de", "Selezione di"],
+  "exclude_exceptions": [
+    "Laptop-Rucksack", "Laptoprucksack", "Laptop Rucksack", "Laptop-Tasche", "Laptoptasche", "Laptop Tasche",
+    "Laptopfach", "Laptop-Fach", "Laptop-Ständer", "Laptopständer", "Laptop Stand", "Laptop-Stand",
+    "Laptop Backpack", "Laptop Bag", "Laptop Sleeve", "Notebook-Rucksack", "Notebookrucksack", "Notebook-Tasche",
+    "Notebooktasche", "Notebookfach", "Sac à dos PC portable", "Sacoche PC portable",
+    "Studio-Monitor", "Studiomonitor", "Studio Monitor", "Monitor-Kopfhörer", "Monitor-Lautsprecher",
+    "Monitorlautsprecher", "Monitor Speaker", "Monitorarm", "Monitor-Arm", "Monitor Arm", "Monitorhalterung",
+    "Monitor-Halterung", "Monitorständer", "Monitor-Ständer", "Dual Monitor", "Dual-Monitor", "Triple Monitor",
+    "Monitor Light Bar", "Monitorlampe", "Monitor-Lampe", "Bildschirmlampe", "Bildschirmhalterung"
+  ],
   "exclude_words": [
-    "Sammeldeal", "z.B.", "z. B.",
     "SFP", "Transceiver", "Medienkonverter", "Media Converter",
     "Multimode", "Singlemode", "Patchpanel", "Patch Panel",
     "Serverschrank", "Netzwerkschrank", "Rackmount", "Rackmontage", "Hutschiene",
     "Monitor", "Bildschirm", "QD-OLED", "Laptop", "Notebook", "MacBook", "Chromebook",
     "Fernseher", "Smart TV", "Smart-TV", "OLED TV", "OLED-TV", "QLED", "4K TV", "UHD TV", "Soundbar",
     "οθόνη", "τηλεόραση", "ηχομπάρα", "λάπτοπ", "φορητός υπολογιστής",
-    "Sélection de", "Selección de", "Recopilación de", "Selezione di",
     "PC portable", "Ordinateur portable", "Ordenador portátil", "Portátil gaming", "Portátil gamer",
     "PC portatile", "Computer portatile", "Vivobook", "Zenbook", "IdeaPad", "ThinkPad", "ThinkBook", "Zephyrus",
     "Inspiron", "EliteBook", "ProBook", "Galaxy Book", "Surface Pro", "Predator Helios",

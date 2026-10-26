@@ -10,18 +10,26 @@ pepper.nl, pepper.pl and insomnia.gr offers can be switched on in `sources`; ins
 GitHub's servers, so its offers reach Telegram through forum email notifications instead.
 
 - Settings: `config.json` (minimum drop, minimum saving, shops, topics, excluded words, sources).
-  A deal is kept only if it fits one of the `topics`: by the community's category,
-  or by one of the topic's words in its title (camelcamelcamel has no categories).
-  It must also name a known brand, be new or like new, and on mydealz/preisjaeger
-  have at least `min_temperature` community votes (price errors don't wait for votes);
-  posts in the `hot_tier` of votes need a smaller drop. Each topic can set its own
-  `min_usual_price_eur`. Below a shop's free-delivery minimum the delivery fee is added
-  to the price before the drop is checked.
+  A deal is kept only if it fits one of the `topics` (tried in order): by one of the topic's
+  words in the title, else by the community's category (camelcamelcamel has no categories).
+  It must also name a known brand, be new or like new (`not_used_words` such as "ungebraucht"
+  are not used), not be a single video game (it names one of `game_consoles` but no
+  `game_hardware_words` and no other brand), and on the communities have at least
+  `min_temperature` votes. Each topic can set its own `min_usual_price_eur`. Below a shop's
+  free-delivery minimum the delivery fee is added to the price before the drop is checked.
+- What a title says after "für", "for", "pour", "sur", "para", "per", "compatible" or "για" is what
+  the product fits ("Controller für PS5", "Ladegerät für MacBook, Laptop"): a brand or an
+  excluded kind of product named only there doesn't count, and topic words there count last.
+  `exclude_exceptions` are accessory phrases ("Laptop-Rucksack", "Studio-Monitor") that don't
+  make a deal an excluded kind; `whole_shop_words` ("Sammeldeal", "z.B.") count anywhere.
+- Price errors (⚡) don't wait for votes, but still need the topic's usual price and the drop.
 - `shops`: how each Amazon delivers to Greece, from its "delivery rates to Europe" help page
   (checked 2026-10-25): a fee per parcel plus one per kg, free from `free_from` (Amazon.de, €59)
   or never (`null`: Amazon.it, .fr, .es). The weight comes from the topic's parcel size
   (`forwarding.size`, default small) through `parcel_kg`. `vat_factor` turns the shop's price
   into one with Greek VAT (24%), which Amazon charges for deliveries to Greece.
+  Titles with one of the `size_words` (washing machines, treadmills, gaming chairs, …) count as
+  that parcel size whatever their topic.
 - An Amazon.it/.fr/.es deal is dropped when Amazon.de sells the same product (same ASIN) for
   less, delivered to Greece. Amazon's terms forbid robots on its pages and camelcamelcamel's
   product pages refuse scripts, so this uses only the Amazon.de prices the sources list in the
@@ -49,7 +57,8 @@ GitHub's servers, so its offers reach Telegram through forum email notifications
   links to buy, to the Amazon reviews, to Skroutz (searched by brand and model), to the price
   history (Keepa) and to the community's discussion. Forwarded deals add that returns go back
   to Germany at the buyer's cost and that German VAT can't be offset. A product is sent once in
-  30 days, whichever community posts it.
+  30 days, whichever community posts it, unless it comes again at least 10% cheaper. Each deal
+  is remembered as soon as Telegram takes it, so a Telegram failure halfway sends nothing twice.
 - Once a day, on the first run after `daily_status_utc_hour` (UTC), the scanner checks
   itself and sends a message only if something is wrong: a source failed or found nothing,
   or fewer than half of `expected_runs_per_day` runs happened.

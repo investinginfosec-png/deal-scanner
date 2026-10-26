@@ -46,16 +46,17 @@ class ConfigTest(unittest.TestCase):
     def test_has_every_setting(self):
         # the Apps Script reads topics, brands, used_words, like_new_words and exclude_words too
         for key in ["min_drop_percent", "min_saving_eur", "min_usual_price_eur", "min_temperature",
-                    "hot_tier", "shops", "parcel_kg", "forwarding", "topics", "brands", "used_words", "like_new_words",
-                    "barebone_words", "keyboard_words", "keyboard_layout_ok_words",
-                    "exclude_words", "sources", "pepper_pages", "insomnia_days", "daily_status_utc_hour",
+                    "shops", "parcel_kg", "size_words", "forwarding", "topics", "brands", "used_words",
+                    "not_used_words", "like_new_words", "barebone_words", "keyboard_words", "keyboard_layout_ok_words",
+                    "game_consoles", "game_hardware_words", "whole_shop_words", "exclude_exceptions", "exclude_words", "sources", "pepper_pages", "insomnia_days", "daily_status_utc_hour",
                     "expected_runs_per_day", "skroutz_categories"]:
             self.assertIn(key, CFG)
         self.assertIn(CFG["daily_status_utc_hour"], range(24))
 
     def test_word_lists(self):
-        for key in ["brands", "used_words", "like_new_words", "exclude_words", "barebone_words", "keyboard_words",
-                    "keyboard_layout_ok_words"]:
+        for key in ["brands", "used_words", "not_used_words", "like_new_words", "exclude_words", "barebone_words",
+                    "keyboard_words", "keyboard_layout_ok_words", "game_consoles", "game_hardware_words",
+                    "whole_shop_words", "exclude_exceptions"]:
             self.assertTrue(CFG[key], key)
             for word in CFG[key]:
                 self.assertTrue(isinstance(word, str) and word.strip(), f"{key}: {word!r}")
@@ -73,6 +74,7 @@ class ConfigTest(unittest.TestCase):
             self.assertIn(size, forwarding["cost_eur"])
         self.assertIn("small", forwarding["cost_eur"])  # the default size
         self.assertEqual(set(CFG["parcel_kg"]), set(forwarding["cost_eur"]))
+        self.assertLessEqual(set(CFG["size_words"]), set(CFG["parcel_kg"]))
 
     def test_shops(self):
         for domain, terms in CFG["shops"].items():
@@ -134,16 +136,20 @@ class FilterTest(unittest.TestCase):
 
     def test_community_votes(self):
         self.assertFalse(ds.is_big(amazon_deal(HEADPHONES, temperature=CFG["min_temperature"] - 1), CFG))
-        hot = CFG["hot_tier"]
-        if hot["min_drop_percent"] < CFG["min_drop_percent"]:  # posts with many votes may drop less
-            smaller_drop = hot["min_drop_percent"] + 1
-            self.assertTrue(ds.is_big(amazon_deal(HEADPHONES, drop=smaller_drop, temperature=hot["min_temperature"]), CFG))
-            self.assertFalse(ds.is_big(amazon_deal(HEADPHONES, drop=smaller_drop), CFG))
-        self.assertFalse(ds.is_big(amazon_deal(HEADPHONES, drop=min(CFG["min_drop_percent"], hot["min_drop_percent"]) - 2,
-                                               temperature=hot["min_temperature"] + 100), CFG))
+        # however many votes, the drop must be big enough
+        self.assertFalse(ds.is_big(amazon_deal(HEADPHONES, drop=CFG["min_drop_percent"] - 2, temperature=1000), CFG))
 
     def test_price_errors_need_no_votes(self):
         self.assertTrue(ds.is_big(amazon_deal(HEADPHONES, temperature=0, price_error=True), CFG))
+        no_usual_price = amazon_deal(HEADPHONES, temperature=0, price_error=True)
+        no_usual_price["ref"] = None
+        self.assertTrue(ds.is_big(no_usual_price, CFG))
+
+    def test_price_errors_still_need_a_worthwhile_item(self):
+        topic = ds.matching_topic(amazon_deal(HEADPHONES), CFG)
+        too_cheap = CFG["topics"][topic]["min_usual_price_eur"] - 1
+        self.assertFalse(ds.is_big(amazon_deal(HEADPHONES, ref=too_cheap, drop=90, price_error=True), CFG))
+        self.assertFalse(ds.is_big(amazon_deal(HEADPHONES, drop=CFG["min_drop_percent"] - 5, price_error=True), CFG))
 
     def test_cheap_items_skipped(self):
         topic = ds.matching_topic(amazon_deal(HEADPHONES), CFG)
@@ -174,8 +180,11 @@ class FilterTest(unittest.TestCase):
             self.assertTrue(ds.is_big(deal, CFG))
             return deal
         prices = {}
-        ds.add_amazon_de_prices([amazon_deal(HEADPHONES, ref=700, drop=27)], prices)  # Amazon.de, same product
+        ds.add_amazon_de_prices([amazon_deal(HEADPHONES, ref=700, drop=27)], prices, CFG)  # Amazon.de, same product
         self.assertEqual(prices, {ASIN: 511})
+        ds.add_amazon_de_prices([amazon_deal(HEADPHONES, ref=700, drop=60, price_error=True),
+                                 amazon_deal(HEADPHONES + " Amazon Resale", ref=700, drop=60)], prices, CFG)
+        self.assertEqual(prices, {ASIN: 511})  # price errors and used items don't count
         self.assertTrue(ds.cheaper_on_amazon_de(italian(), prices, CFG))
         self.assertFalse(ds.cheaper_on_amazon_de(italian(), {}, CFG))  # Amazon.de not read in this run
         dearer = italian()
@@ -212,6 +221,56 @@ class FilterTest(unittest.TestCase):
     def test_greek_member_offers(self):
         self.assertTrue(ds.is_big(greek_offer("Φριτέζα αέρος Philips 7.2lt 129€ @ Kotsovolos"), CFG))
         self.assertFalse(ds.is_big(greek_offer("Ζυμαρικά De Cecco -50%"), CFG))
+
+    def test_heavy_items_are_costed_as_large_parcels(self):
+        kg = CFG["parcel_kg"]
+        for title, topic in [("Secretlab TITAN Evo Gaming-Stuhl", "εργονομία γραφείου"),
+                             ("Bosch Waschmaschine Serie 6, 9 kg, Inverter-Motor", "σπίτι & κουζίνα"),
+                             ("Sportstech Laufband F37", "γυμναστική & συμπληρώματα")]:
+            deal = amazon_deal(title, ref=900, drop=50, shop_host="amazon.it", url=f"https://www.amazon.it/dp/{ASIN}")
+            self.assertTrue(ds.is_big(deal, CFG), title)
+            self.assertEqual((deal["topic"], deal["parcel_kg"]), (topic, kg["large"]), title)
+        self.assertEqual(ds.matching_topic(amazon_deal("Bowflex Kettlebell 20 kg"), CFG), "γυμναστική & συμπληρώματα")
+        # what a product fits doesn't decide its topic
+        self.assertEqual(ds.matching_topic(amazon_deal("Anker Powerbank 20000mAh für Steam Deck"), CFG),
+                         "χρήσιμα καθημερινά")
+
+    def test_accessories_are_not_excluded_kinds(self):
+        for title, where in [("Samsung 990 PRO 2TB NVMe SSD", "notebooksbilliger.de"),
+                             ("Samsonite Laptop-Rucksack 15,6 Zoll", "Amazon"),
+                             ("Anker Nano Ladegerät 65W für MacBook, Laptop", "Amazon"),
+                             ("Audio-Technica ATH-M50x Studio-Monitor Kopfhörer", "Amazon"),
+                             ("Ugreen Dockingstation USB-C Dual Monitor", "Amazon")]:
+            deal = amazon_deal(title, where=where)
+            self.assertTrue(ds.is_big(deal, CFG), title)
+        self.assertFalse(ds.is_big(amazon_deal("Samsung Odyssey G7 Gaming Monitor für PS5"), CFG))
+
+    def test_a_brand_only_named_as_what_it_fits_is_not_the_products(self):
+        for title in ["Controller für PS5 kabellos", "Ladegerät für Apple iPhone Samsung Galaxy",
+                      "Funda para Nintendo Switch 2"]:
+            self.assertFalse(ds.is_big(amazon_deal(title), CFG), title)
+        for title in ["Anker Ladegerät für Apple iPhone", "WD_BLACK SN850X 2TB NVMe SSD", "De’Longhi Magnifica S Espresso"]:
+            self.assertTrue(ds.is_big(amazon_deal(title), CFG), title)
+
+    def test_single_games_are_left_out(self):
+        for title in ["Assault Suit Leynos 2 Saturn Tribute PS5", "Touhou Spell Carnival – Limited Edition (PS5)",
+                      "Crimson Desert Day One Edition (Xbox Series X)", "Mario Kart World (Nintendo Switch 2)",
+                      "Diablo IV: Age of Hatred Collection I Nintendo Switch 2", "[PS5] Astro Bot"]:
+            self.assertTrue(ds.single_game(title, CFG), title)
+            self.assertFalse(ds.is_big(amazon_deal(title), CFG), title)
+        for title in ["PlayStation 5 Slim Digital Edition", "Nintendo Switch 2 Pro Controller",
+                      "Sony DualSense Wireless-Controller", "DualSense Edge Wireless-Controller für PlayStation 5",
+                      "Logitech G923 Racing Wheel für PS5", "Xbox Series X 1TB", "Samsung 990 PRO SSD für PS5"]:
+            self.assertFalse(ds.single_game(title, CFG), title)
+        self.assertTrue(ds.is_big(amazon_deal("Nintendo Switch 2 Pro Controller"), CFG))
+
+    def test_condition_words(self):
+        self.assertTrue(ds.is_big(amazon_deal(HEADPHONES + " ungebraucht, OVP"), CFG))  # unused
+        for title in ["[Refurb] " + HEADPHONES, HEADPHONES + " - Amazon Resale"]:
+            self.assertFalse(ds.is_big(amazon_deal(title), CFG), title)
+
+    def test_amazon_links_with_a_language_path(self):
+        self.assertEqual(ds.product_key(amazon_deal(HEADPHONES, url=f"https://www.amazon.de/-/en/dp/{ASIN}?th=1")), ASIN)
 
 
 class LinksAndMessagesTest(unittest.TestCase):
@@ -329,8 +388,40 @@ class LinksAndMessagesTest(unittest.TestCase):
             ds.is_big(deal, CFG)
         with mock.patch.object(ds, "send_telegram", side_effect=lambda cfg, text, silent: sent.append(silent)), \
                 mock.patch.object(ds.time, "sleep"):
-            ds.send_deals(CFG, [loud, quiet])
+            ds.send_deals(CFG, [loud, quiet], [])
         self.assertEqual(sent, [False, True])
+
+    def test_telegram_failing_halfway_sends_nothing_twice(self):
+        first, second = amazon_deal(HEADPHONES, key="mydealz:1"), amazon_deal("Ninja Creami", key="mydealz:2",
+                                                                              url="https://www.amazon.de/dp/B0OTHER123")
+        left_out = amazon_deal(HEADPHONES, key="preisjaeger:3")  # the same product from another community
+        for deal in (first, second, left_out):
+            self.assertTrue(ds.is_big(deal, CFG), deal["title"])
+        calls = []
+        def telegram(cfg, text, silent):
+            calls.append(text)
+            if len(calls) == 2:
+                raise RuntimeError("Telegram sendMessage: 429")
+        sent = []
+        with mock.patch.object(ds, "send_telegram", side_effect=telegram), mock.patch.object(ds.time, "sleep"), \
+                self.assertRaises(RuntimeError):
+            ds.send_deals(CFG, [first, second], sent)
+        self.assertEqual(sent, [first])
+        seen = ds.remember_sent({}, [first, second, left_out], sent, [second])
+        self.assertIn("mydealz:1", seen)
+        self.assertIn("preisjaeger:3", seen)
+        self.assertNotIn("mydealz:2", seen)  # tried again next run
+        self.assertEqual(seen[f"product:{ASIN}"][1], round(ds.landed_cost(first), 2))
+        self.assertNotIn("product:B0OTHER123", seen)
+
+    def test_a_product_comes_again_only_10_percent_cheaper(self):
+        deal = amazon_deal(HEADPHONES)
+        ds.is_big(deal, CFG)
+        cost, now = ds.landed_cost(deal), int(ds.time.time())
+        self.assertFalse(ds.already_sent(deal, {}))
+        self.assertTrue(ds.already_sent(deal, {f"product:{ASIN}": [now, cost * 1.05]}))
+        self.assertFalse(ds.already_sent(deal, {f"product:{ASIN}": [now, cost * 1.2]}))
+        self.assertTrue(ds.already_sent(deal, {f"product:{ASIN}": now}))  # sent before prices were kept
 
     def test_search_names(self):
         for title, name in [
@@ -446,11 +537,14 @@ class ParsingTest(unittest.TestCase):
             dict(base, threadId=3, title="iPhone 16 mit Vertrag 29,99€ mtl."),  # monthly price
             dict(base, threadId=4, isExpired=True),
             dict(base, threadId=5, nextBestPrice=150),  # dearer than elsewhere
+            dict(base, threadId=6, nextBestPrice=150, percentage=50),  # dearer than elsewhere, whatever the poster says
+            dict(base, threadId=7, title="Preisfehler: Telekom Tarif 4,99€ mtl."),  # a monthly price, even as a price error
         ]
         page = "<html>" + "".join(vue_blob(t) for t in threads) + "</html>"
         with mock.patch.object(ds, "fetch", return_value=page):
             deals = ds.pepper_deals(None, "mydealz", dict(CFG, pepper_pages=1))
         self.assertEqual([d["key"] for d in deals], ["mydealz:1", "mydealz:2"])
+        self.assertEqual([d["ref_kind"] for d in deals], ["next_shop", "poster"])
         first = deals[0]
         self.assertEqual((first["price"], first["ref"], first["temperature"], first["comments"]), (195, 300, 420.5, 12))
         self.assertEqual(first["visit_url"], "https://www.mydealz.de/visit/threadmain/1")
