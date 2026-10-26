@@ -620,6 +620,29 @@ class BlockTest(unittest.TestCase):
         self.assertEqual(session.get.call_count, 1)
         self.assertEqual(links["mydealz:1"][1], f"https://www.amazon.de/dp/{ASIN}")
 
+    def test_a_broken_short_link_is_asked_once_too(self):
+        session = mock.Mock()
+        session.get.side_effect = lambda url, **kw: (response(302, Location="https://amzn.eu/d/0hvaaZX3Alhambra")
+                                                     if "visit" in url else response(404))
+        links = {}
+        for _ in range(2):
+            deal = amazon_deal(HEADPHONES, shop_host="amzn.eu", url="https://www.chollometro.com/ofertas/x-1",
+                               visit_url="https://www.chollometro.com/visit/threadmain/1")
+            with mock.patch.object(ds.time, "sleep"):
+                ds.resolve_short_shops(session, [deal], {}, links)
+            self.assertEqual(deal["shop_host"], "amzn.eu")  # no Amazon to deliver from: left out by the filters
+        self.assertEqual(session.get.call_count, 2)  # the redirect and the short link, in the first run only
+
+    def test_no_answer_is_tried_again(self):
+        session = mock.Mock()
+        session.get.return_value = response(403)
+        links = {}
+        deal = amazon_deal(HEADPHONES, url="https://www.mydealz.de/deals/x-1",
+                           visit_url="https://www.mydealz.de/visit/threadmain/1")
+        with mock.patch.object(ds.time, "sleep"), mock.patch.object(ds, "log"):
+            ds.add_shop_links(session, [deal], {}, links)
+        self.assertEqual(links, {})
+
     def test_rest_for_the_day_then_every_other_day(self):
         day = date(2026, 10, 26)
         blocks = {}

@@ -313,8 +313,10 @@ def add_shop_links(session, deals, refused, links):
             if urlsplit(shop).netloc in AMAZON_SHORT_HOSTS:  # amzn.eu/… → amazon.de/dp/…
                 shop = redirect_target(session, shop, refused) or shop
             time.sleep(3)
-            if shop.startswith("http") and urlsplit(shop).netloc not in AMAZON_SHORT_HOSTS:
-                links[d["key"]] = [int(time.time()), shop]  # a failed lookup is tried again next run
+            # an answer won't change, even one that leads nowhere (a mistyped short link); only
+            # a request with no answer, or to a site that refused us, is tried again next run
+            if target and urlsplit(shop).netloc not in refused:
+                links[d["key"]] = [int(time.time()), shop]
         if shop.startswith("http") and urlsplit(shop).netloc != urlsplit(d["url"]).netloc:
             d["extra_url"] = d["url"]  # the community's page, linked as the discussion
             d["url"] = shop
