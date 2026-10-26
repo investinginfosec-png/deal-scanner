@@ -277,9 +277,10 @@ class LinksAndMessagesTest(unittest.TestCase):
     def test_amazon_short_links_are_resolved(self):
         deal = amazon_deal(HEADPHONES, shop_host="amzn.eu", url="https://www.mydealz.de/deals/x-1",
                            visit_url="https://www.mydealz.de/visit/threadmain/1")
-        targets = lambda session, url: "https://amzn.eu/d/abc" if "visit" in url else f"https://www.amazon.de/dp/{ASIN}"
+        targets = lambda session, url, refused: ("https://amzn.eu/d/abc" if "visit" in url
+                                                 else f"https://www.amazon.de/dp/{ASIN}")
         with mock.patch.object(ds, "redirect_target", side_effect=targets), mock.patch.object(ds.time, "sleep"):
-            ds.resolve_short_shops(None, [deal])
+            ds.resolve_short_shops(None, [deal], {})
         self.assertEqual(deal["shop_host"], "www.amazon.de")
         self.assertEqual(deal["url"], f"https://www.amazon.de/dp/{ASIN}")
         self.assertTrue(ds.is_big(deal, CFG))
@@ -562,6 +563,62 @@ class ParsingTest(unittest.TestCase):
         self.assertEqual(deals[0]["url"], f"https://www.amazon.de/dp/{ASIN}")
 
 
+def response(status=200, text="<html><title>Deals</title></html>", **headers):
+    r = mock.Mock(status_code=status, text=text, headers=headers)
+    r.raise_for_status.return_value = None
+    return r
+
+
+class BlockTest(unittest.TestCase):
+    """A site that refuses us is never asked again that day, and never worked around."""
+
+    def test_refusals(self):
+        for r in [response(403), response(429), response(503),
+                  response(text="<html><head><title>Just a moment...</title>"),
+                  response(text="<title>Attention Required! | Cloudflare</title>"),
+                  response(**{"cf-mitigated": "challenge"})]:
+            self.assertTrue(ds.refusal(r))
+        # a normal page whose login form loads a captcha, and an RSS item about a robot vacuum
+        self.assertEqual(ds.refusal(response(text="<title>mydealz</title><script>recaptcha</script>")), "")
+        self.assertEqual(ds.refusal(response(text="<rss><channel><title>Top Amazon Price Drops</title>"
+                                                  "<item><title>Roborock robot check</title></item>")), "")
+        self.assertEqual(ds.refusal(response(404)), "")  # a broken page is an error, not a refusal
+
+    def test_no_second_try(self):
+        session = mock.Mock()
+        session.get.return_value = response(429)
+        with mock.patch.object(ds.time, "sleep") as sleep, self.assertRaises(ds.Blocked) as caught:
+            ds.fetch(session, "https://www.dealabs.com/hot")
+        self.assertEqual(str(caught.exception), "HTTP 429")
+        self.assertEqual(session.get.call_count, 1)
+        sleep.assert_not_called()
+
+    def test_refused_redirects_are_not_asked_again(self):
+        session = mock.Mock()
+        session.get.return_value = response(403)
+        deals = [amazon_deal(HEADPHONES, key=f"mydealz:{i}", url=f"https://www.mydealz.de/deals/x-{i}",
+                             visit_url=f"https://www.mydealz.de/visit/threadmain/{i}") for i in range(3)]
+        refused = {}
+        with mock.patch.object(ds.time, "sleep"), mock.patch.object(ds, "log"):
+            ds.add_shop_links(session, deals, refused)
+        self.assertEqual(session.get.call_count, 1)
+        self.assertEqual(refused, {"www.mydealz.de": "HTTP 403"})
+        self.assertEqual(deals[0]["url"], "https://www.mydealz.de/deals/x-0")  # still links the community
+        self.assertEqual(ds.source_host("mydealz"), "www.mydealz.de")
+        self.assertEqual(ds.source_host("camel_it"), "it.camelcamelcamel.com")
+
+    def test_rest_for_the_day_then_every_other_day(self):
+        day = date(2026, 10, 26)
+        blocks = {}
+        ds.note_block(blocks, "dealabs", "HTTP 429", day)
+        self.assertTrue(ds.resting(blocks["dealabs"], day))
+        self.assertFalse(ds.resting(blocks["dealabs"], day + timedelta(days=1)))
+        ds.note_block(blocks, "dealabs", "HTTP 429", day + timedelta(days=1))  # refused again, no good read between
+        self.assertEqual(blocks["dealabs"]["times"], 2)
+        self.assertTrue(ds.resting(blocks["dealabs"], day + timedelta(days=2)))
+        self.assertFalse(ds.resting(blocks["dealabs"], day + timedelta(days=3)))
+
+
 class DailyStatusTest(unittest.TestCase):
     def setUp(self):
         folder = tempfile.TemporaryDirectory()
@@ -580,14 +637,29 @@ class DailyStatusTest(unittest.TestCase):
         self.assertIsNone(ds.daily_status_due(CFG, day.replace(hour=23)))
 
     def test_problems(self):
-        expected = CFG["expected_runs_per_day"]
-        self.assertEqual(ds.status_problems({"mydealz": 80, "camel_de": 40}, {}, expected, expected), [])
-        self.assertEqual(ds.status_problems({"mydealz": 80}, {}, None, expected), [])  # run count unknown
-        problems = ds.status_problems({"mydealz": 0}, {"preisjaeger": "σφάλμα 403"}, expected // 3, expected)
+        expected, today = CFG["expected_runs_per_day"], date(2026, 10, 26)
+        self.assertEqual(ds.status_problems({"mydealz": 80, "camel_de": 40}, {}, expected, expected, {}, today), [])
+        self.assertEqual(ds.status_problems({"mydealz": 80}, {}, None, expected, {}, today), [])  # run count unknown
+        problems = ds.status_problems({"mydealz": 0}, {"preisjaeger": "σφάλμα 500"}, expected // 3, expected,
+                                      {}, today)
         self.assertEqual(len(problems), 3)
-        self.assertIn("preisjaeger: σφάλμα 403", problems[0])
+        self.assertIn("preisjaeger: σφάλμα 500", problems[0])
         self.assertIn("mydealz: δεν βρήκε καμία προσφορά", problems[1])
         self.assertIn(f"μόνο {expected // 3} από", problems[2])
+
+    def test_refusals_are_reported_while_the_source_rests(self):
+        today = date(2026, 10, 26)
+        blocks = {"dealabs": {"day": "2026-10-26", "why": "HTTP 429", "times": 1},
+                  "camel_it": {"day": "2026-10-25", "why": "σελίδα ελέγχου", "times": 2},
+                  "camel_fr": {"day": "2026-10-25", "why": "HTTP 403", "times": 1}}  # asked again today
+        problems = ds.status_problems({}, {}, None, 48, blocks, today)
+        self.assertEqual(problems, ["• dealabs: μας αρνήθηκε (HTTP 429) στις 26/10· ξαναδοκιμάζεται στις 27/10",
+                                    "• camel_it: μας αρνήθηκε (σελίδα ελέγχου) στις 25/10· ξαναδοκιμάζεται στις 27/10"])
+
+    def test_status_keeps_both_records(self):
+        ds.update_status(last_status="2026-10-25")
+        ds.update_status(blocked={"dealabs": {"day": "2026-10-26", "why": "HTTP 429", "times": 1}})
+        self.assertEqual(set(ds.read_status()), {"last_status", "blocked"})
 
     def test_message(self):
         ok = ds.status_message([], {"mydealz": 80, "camel_de": 40}, 30, 0, datetime(2026, 10, 24, 11, 13))

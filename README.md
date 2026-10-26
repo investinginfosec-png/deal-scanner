@@ -64,12 +64,41 @@ GitHub's servers, so its offers reach Telegram through forum email notifications
   or fewer than half of `expected_runs_per_day` runs happened.
 - Skroutz isn't scanned (it refuses scripts and GitHub's servers); `skroutz_categories` lists
   the categories checked on request in a browser.
+- When a site refuses us (HTTP 403, 429 or 503, or a captcha / bot-check page), it is never
+  asked again or worked around that day: the source rests until the next day (UTC), and once it
+  refused twice in a row it is asked only every other day; a good read ends that. A community
+  that refuses its shop redirects (/visit/) rests the same way, and no more redirects go to a
+  site that refused one in the run. `status.json` keeps these refusals ("blocked") and the
+  daily self-check reports them. A test run (`--dry-run`) saves none.
 - Telegram credentials are **not** in this repository. On GitHub they come from the
   `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` repository secrets; locally from
   `secrets.json` (ignored by git).
 - `seen.json` remembers which posts and products were already sent; `found_deals.csv` is the
-  history of sent deals; `prices.json` the prices seen; `status.json` is the day of the last self-check. It changes daily, so the run commits
-  daily, which keeps GitHub from pausing the schedule (it does after 60 days without commits).
+  history of sent deals; `prices.json` the prices seen; `status.json` the day of the last
+  self-check and the sites that refused us lately. It changes daily, so the run commits daily,
+  which keeps GitHub from pausing the schedule (it does after 60 days without commits).
+
+## What each source allows
+
+Checked 2026-10-25/26. A source is left out only for a legal or financial risk; one whose terms
+forbid automated reading is checked only by hand in a browser, never by this scanner.
+
+- mydealz, preisjaeger, dealabs, chollometro: their robots.txt allows the hot lists but not
+  /visit/ (checked 2026-10-26), the redirect to the shop, which the scanner still asks for each
+  new deal and each Amazon short link (one request, 3 s apart). Their terms call copying their
+  content or making it available to third parties misuse; the scanner only sends deals to its
+  owner. Each community's own Deal-Alarm emails would be the cleanest route (they need an account
+  per community).
+- camelcamelcamel: only its RSS feeds of top price drops, which it offers for this. Its product
+  pages refuse scripts and are not read. Feeds are read 15 s apart.
+- Amazon: its terms forbid robots, so no Amazon page is read. The only request to Amazon is for an
+  amzn.eu / amzn.to short link: its redirect header is read (not followed) to learn the product's
+  id and which Amazon sells it.
+- Skroutz and BestPrice: not read (they refuse scripts; BestPrice refused in writing). Skroutz
+  alerts reach Telegram from its emails through the Google script in skroutz-alerts.
+- insomnia.gr: refuses GitHub's servers; its offers come through forum email notifications.
+
+Requests are spaced: 3 s between community pages and between shop redirects, 15 s between feeds.
 
 Run locally: `python deal_scanner.py --dry-run` (prints only) or `python deal_scanner.py`.
 Check the filters: `python -m unittest -v test_deal_scanner` (GitHub runs this before every scan).

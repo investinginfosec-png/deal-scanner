@@ -102,6 +102,17 @@ FLAG_COUNTRY = {"🇩🇪": "de", "🇦🇹": "at", "🇫🇷": "fr", "🇪🇸"
 HISTORY_DAYS = 90  # how long prices.json keeps a price
 LATELY_DAYS = 30  # EU rule: a discount counts against the lowest price of the last 30 days
 
+# A site refuses us when it answers 403 (forbidden), 429 (too many requests) or 503, or shows a
+# bot check instead of the page. We never work around it: the source rests for the rest of the day.
+BLOCK_CODES = {403, 429, 503}
+# only the page's own title counts: normal pages carry captcha scripts for their login forms
+BOT_CHECK = re.compile(r"just a moment|attention required|access denied|captcha|are you a robot|"
+                       r"robot check|pardon our interruption", re.IGNORECASE)
+
+
+class Blocked(Exception):
+    """A site refused our request; the text says how ("HTTP 429", "σελίδα ελέγχου")."""
+
 
 def log(msg):
     line = f"{datetime.now():%Y-%m-%d %H:%M} {msg}"
@@ -110,11 +121,21 @@ def log(msg):
         f.write(line + "\n")
 
 
+def refusal(r):
+    """How a response refuses us, or "" when it doesn't."""
+    if r.status_code in BLOCK_CODES:
+        return f"HTTP {r.status_code}"
+    title = re.search(r"<title[^>]*>([^<]*)", r.text[:20000], re.IGNORECASE)
+    if r.headers.get("cf-mitigated") or (title and BOT_CHECK.search(title.group(1))):
+        return "σελίδα ελέγχου"
+    return ""
+
+
 def fetch(session, url):
     r = session.get(url, timeout=30)
-    if r.status_code == 429:  # rate limited: wait once and retry
-        time.sleep(60)
-        r = session.get(url, timeout=30)
+    why = refusal(r)
+    if why:  # never asked again: the source rests for the day
+        raise Blocked(why)
     r.raise_for_status()
     # be polite between requests; camelcamelcamel blocks bursts of requests
     time.sleep(15 if "camelcamelcamel" in url else 3)
@@ -251,35 +272,75 @@ def camel_deals(session, name, cfg):
     return deals
 
 
-def redirect_target(session, url):
-    """Where a link redirects to, read from its Location header (not followed)."""
+def redirect_target(session, url, refused):
+    """Where a link redirects to, read from its Location header (not followed).
+
+    refused: the hosts that refused us in this run (host → how); they are not asked again.
+    """
+    host = urlsplit(url).netloc
+    if host in refused:
+        return ""
     try:
-        return session.get(url, allow_redirects=False, timeout=30).headers.get("Location", "")
+        r = session.get(url, allow_redirects=False, timeout=30)
     except requests.RequestException:
         return ""
+    why = refusal(r)
+    if why:
+        refused[host] = why
+        log(f"{host}: μας αρνήθηκε ({why}), δεν το ξαναρωτάμε σε αυτόν τον έλεγχο")
+        return ""
+    return r.headers.get("Location", "")
 
 
-def add_shop_links(session, deals):
+def add_shop_links(session, deals, refused):
     """Point community deals straight at the shop, read from the site's redirect (not followed)."""
     for d in deals:
         if "visit_url" not in d:
             continue
-        target = redirect_target(session, d.pop("visit_url"))
+        visit = d.pop("visit_url")
+        if urlsplit(visit).netloc in refused:
+            continue
+        target = redirect_target(session, visit, refused)
         shop = parse_qs(urlsplit(target).query).get("url", [target])[0]
         if urlsplit(shop).netloc in AMAZON_SHORT_HOSTS:  # amzn.eu/… → amazon.de/dp/…
-            shop = redirect_target(session, shop) or shop
+            shop = redirect_target(session, shop, refused) or shop
         if shop.startswith("http") and urlsplit(shop).netloc != urlsplit(d["url"]).netloc:
             d["extra_url"] = d["url"]  # the community's page, linked as the discussion
             d["url"] = shop
-        time.sleep(1)
+        time.sleep(3)
 
 
-def resolve_short_shops(session, deals):
+def resolve_short_shops(session, deals, refused):
     """Amazon short links hide which Amazon sells the deal, so look it up before filtering."""
     short = [d for d in deals if d.get("shop_host") in AMAZON_SHORT_HOSTS]
-    add_shop_links(session, short)
+    add_shop_links(session, short, refused)
     for d in short:
         d["shop_host"] = urlsplit(d["url"]).netloc
+
+
+def source_host(name):
+    """The site a source reads."""
+    if name in PEPPER_SITES:
+        return urlsplit(PEPPER_SITES[name][1]).netloc
+    return urlsplit(CAMEL_SITES[name][2] if name in CAMEL_SITES else INSOMNIA_RSS).netloc
+
+
+def note_block(blocks, name, why, today):
+    """Remember in `blocks` that a source refused us today. `times` counts the refusals with no
+    good read between them (a good read removes the source from `blocks`)."""
+    times = blocks.get(name, {}).get("times", 0) + 1
+    blocks[name] = {"day": today.isoformat(), "why": why, "times": times}
+
+
+def rest_days(entry):
+    """How long a source rests after refusing us: the rest of that day, or, once it refused twice
+    in a row, the next day too, so it is then asked only every other day."""
+    return 2 if entry["times"] >= 2 else 1
+
+
+def resting(entry, today):
+    """Whether a source that refused us is still left alone today."""
+    return (today - date.fromisoformat(entry["day"])).days < rest_days(entry)
 
 
 def product_key(deal):
@@ -750,19 +811,37 @@ def sent_last_day():
     return sum(t >= since for t in times), max(times, default=None)
 
 
+def read_status():
+    """status.json: the day of the last daily status ("last_status") and the sources that
+    refused us lately ("blocked": name → day, how, times in a row)."""
+    return json.loads(STATUS.read_text(encoding="utf-8")) if STATUS.exists() else {}
+
+
+def update_status(**changes):
+    STATUS.write_text(json.dumps(dict(read_status(), **changes)), encoding="utf-8")
+
+
 def daily_status_due(cfg, now):
     """Today's date if the daily status message is due (once a day, after the configured UTC hour)."""
-    last = json.loads(STATUS.read_text(encoding="utf-8")).get("last_status") if STATUS.exists() else None
+    last = read_status().get("last_status")
     today = now.date().isoformat()
     return today if now.hour >= cfg["daily_status_utc_hour"] and last != today else None
 
 
-def status_problems(read, failed, runs, expected_runs):
-    """What is wrong today: sources that broke or found nothing, or GitHub skipping too many runs.
+def status_problems(read, failed, runs, expected_runs, blocks, today):
+    """What is wrong today: sources that broke, refused us or found nothing, or GitHub skipping
+    too many runs.
 
-    read: deals each source returned in this run; failed: the error of each source that broke.
+    read: deals each source returned in this run; failed: the error of each source that broke;
+    blocks: the sources that refused us lately.
     """
     problems = [f"• {name}: {why}" for name, why in failed.items()]
+    for name, entry in blocks.items():
+        if resting(entry, today):
+            day = date.fromisoformat(entry["day"])
+            again = day + timedelta(days=rest_days(entry))
+            problems.append(f"• {name}: μας αρνήθηκε ({entry['why']}) στις {day:%d/%m}· "
+                            f"ξαναδοκιμάζεται στις {again:%d/%m}")
     problems += [f"• {name}: δεν βρήκε καμία προσφορά στη σελίδα (μήπως άλλαξε;)"
                  for name, count in read.items() if count == 0]
     if runs is not None and runs < expected_runs / 2:
@@ -850,8 +929,14 @@ def main():
     de_prices = {}  # Amazon.de prices read in this run, by product id
     today = datetime.now(timezone.utc).date()
     history = load_prices(today)
+    blocks = dict(read_status().get("blocked", {}))  # sources that refused us lately
+    saved_blocks = dict(blocks)
+    refused = {}  # hosts that refused us in this run
     for name, enabled in cfg["sources"].items():
         if not enabled:
+            continue
+        if name in blocks and resting(blocks[name], today):
+            counts.append(f"{name} σε παύση")
             continue
         if name == "insomnia":
             scan = insomnia_deals
@@ -859,11 +944,19 @@ def main():
             scan = pepper_deals if name in PEPPER_SITES else camel_deals
         try:
             deals = scan(session, name, cfg)
+        except Blocked as e:
+            note_block(blocks, name, str(e), today)
+            again = today + timedelta(days=rest_days(blocks[name]))
+            log(f"{name}: μας αρνήθηκε ({e}), ξαναδοκιμάζεται στις {again:%d/%m}")
+            refused[source_host(name)] = str(e)
+            counts.append(f"{name} μπλοκ")
+            continue
         except Exception as e:  # one broken source must not stop the others
             log(f"{name}: σφάλμα {e.__class__.__name__}: {e}")
             failed[name] = f"σφάλμα {getattr(getattr(e, 'response', None), 'status_code', None) or e.__class__.__name__}"
             continue
-        resolve_short_shops(session, deals)
+        blocks.pop(name, None)
+        resolve_short_shops(session, deals, refused)
         add_amazon_de_prices(deals, de_prices, cfg)
         big = [d for d in deals if is_big(d, cfg)]
         remember_prices(deals, history, today, cfg)
@@ -877,7 +970,11 @@ def main():
             keys.add(d["key"])
             new.append(d)
     new.sort(key=lambda d: (not d["price_error"], d["price"] / d["ref"] if d["ref"] else 1))
-    add_shop_links(session, new)
+    add_shop_links(session, new, refused)
+    for name in cfg["sources"]:  # a community that refused its redirects rests too
+        host_why = refused.get(source_host(name))
+        if host_why and blocks.get(name, {}).get("day") != today.isoformat():
+            note_block(blocks, name, host_why, today)
     add_amazon_de_prices(new, de_prices, cfg)
     remember_prices(new, history, today, cfg)  # community deals know their Amazon product only now
     # an Amazon.it/.fr/.es deal is no deal when Amazon.de sells the same product for less, nor one
@@ -899,11 +996,13 @@ def main():
             text = re.sub(r'<a href="([^"]*)">(.*?)</a>', r"\2 \1", format_deal(d, cfg))
             print("\n" + re.sub(r"</?b>", "", text))
         runs = runs_last_day()
-        problems = status_problems(read, failed, runs, cfg["expected_runs_per_day"])
+        problems = status_problems(read, failed, runs, cfg["expected_runs_per_day"], blocks, today)
         print("\n" + re.sub(r"</?b>", "", status_message(problems, read, runs, *sent_last_day())))
         return 0
 
     save_prices(history)
+    if blocks != saved_blocks:
+        update_status(blocked=blocks)
     if new:
         sent = []
         try:
@@ -917,18 +1016,18 @@ def main():
             STATE.write_text(json.dumps(remember_sent(seen, new, sent, unsent)), encoding="utf-8")
             log_found(sent)
 
-    today = daily_status_due(cfg, datetime.now(timezone.utc))
-    if today:
+    status_day = daily_status_due(cfg, datetime.now(timezone.utc))
+    if status_day:
         try:
             runs = runs_last_day()
-            problems = status_problems(read, failed, runs, cfg["expected_runs_per_day"])
+            problems = status_problems(read, failed, runs, cfg["expected_runs_per_day"], blocks, today)
             if problems and telegram_ready(cfg):
                 send_telegram(cfg, status_message(problems, read, runs, *sent_last_day()))
         except Exception as e:  # the deals are already saved; the status is tried again next run
             log(f"ημερήσια κατάσταση: σφάλμα {e.__class__.__name__}: {e}")
         else:
             # written daily even on quiet days, so the run commits daily and GitHub keeps the schedule
-            STATUS.write_text(json.dumps({"last_status": today}), encoding="utf-8")
+            update_status(last_status=status_day)
     return 0
 
 
