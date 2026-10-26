@@ -216,6 +216,10 @@
   ],
   "barebone_words": ["Barebone", "NO RAM", "ohne RAM", "ohne Arbeitsspeicher", "sans RAM", "sin RAM", "senza RAM",
                      "without RAM", "w/o RAM", "χωρίς RAM"],
+  "keyboard_words": ["Tastatur", "Keyboard", "Clavier", "Teclado", "Tastiera"],
+  "keyboard_layout_ok_words": ["US-Layout", "US Layout", "US-Tastatur", "US-International", "US International",
+                               "UK-Layout", "UK Layout", "Layout USA", "QWERTY inglés", "QWERTY americano",
+                               "disposition américaine"],
   "like_new_words": ["wie neu", "like new", "neuwertig", "hervorragend", "exzellent", "excellent", "Renewed Premium", "σαν καινούργιο", "άψογη", "άριστη κατάσταση",
                      "comme neuf", "como nuevo", "come nuovo", "excelente", "eccellente"],
   "skroutz_categories": [
@@ -258,7 +262,9 @@
     "PC portatile", "Computer portatile", "Vivobook", "Zenbook", "IdeaPad", "ThinkPad", "ThinkBook", "Zephyrus",
     "Inspiron", "EliteBook", "ProBook", "Galaxy Book", "Surface Pro", "Predator Helios",
     "Moniteur", "Ecran PC", "Ecran gamer", "Ecran gaming", "Téléviseur", "Televisor", "Televisore", "TV LED",
-    "Barre de son", "Barra de sonido"
+    "Barre de son", "Barra de sonido",
+    "110V", "120V", "110 Volt", "120 Volt", "US-Stecker", "US-Plug", "prise américaine", "enchufe americano",
+    "spina americana"
   ],
   "sources": {
     "mydealz": true,

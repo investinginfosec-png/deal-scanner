@@ -2,7 +2,7 @@
 
 Usage:
     python deal_scanner.py            scan, send new deals, remember them
-    python deal_scanner.py --dry-run  scan and print only (sends nothing, remembers nothing)
+    python deal_scanner.py --dry-run  scan and print only (sends nothing, remembers nothing, not even prices)
     python deal_scanner.py --setup    find your Telegram chat id and send a test message
 
 Settings live in config.json next to this file. The Telegram token and chat id are
@@ -19,7 +19,7 @@ import sys
 import time
 import unicodedata
 import xml.etree.ElementTree as ET
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from urllib.parse import parse_qs, quote_plus, urlsplit
@@ -32,6 +32,7 @@ SECRETS = HERE / "secrets.json"  # local only, listed in .gitignore
 STATE = HERE / "seen.json"
 FOUND_LOG = HERE / "found_deals.csv"
 STATUS = HERE / "status.json"  # the day the last daily status message was sent
+PRICES = HERE / "prices.json"  # delivered prices seen per Amazon product, by day
 RUN_LOG = HERE / "scanner.log"
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -88,6 +89,19 @@ AMAZON_ASIN = re.compile(r"amazon\.[a-z.]+/(?:[^/?]+/)?(?:dp|gp/product)/([A-Z0-
 KEEPA_DOMAINS = {"amazon.de": 3, "amazon.fr": 4, "amazon.it": 8, "amazon.es": 9}  # Keepa's number for each Amazon
 AMAZON_SHORT_HOSTS = {"amzn.eu", "amzn.to"}
 
+# What a deal's usual price is: the communities give the cheapest other shop or the poster's
+# stated discount, camelcamelcamel the product's previous price (often a dearer third-party seller's).
+REF_KINDS = {"next_shop": "στο επόμενο κατάστημα", "poster": "κατά τον αναρτήσαντα",
+             "camel": "πριν (camelcamelcamel)"}
+
+# Keyboards come with the layout of the country they are sold in.
+LAYOUTS = {"de": "γερμανική QWERTZ", "at": "γερμανική QWERTZ", "fr": "γαλλική AZERTY", "es": "ισπανική",
+           "it": "ιταλική"}
+FLAG_COUNTRY = {"🇩🇪": "de", "🇦🇹": "at", "🇫🇷": "fr", "🇪🇸": "es", "🇮🇹": "it"}
+
+HISTORY_DAYS = 90  # how long prices.json keeps a price
+LATELY_DAYS = 30  # EU rule: a discount counts against the lowest price of the last 30 days
+
 
 def log(msg):
     line = f"{datetime.now():%Y-%m-%d %H:%M} {msg}"
@@ -134,8 +148,9 @@ def pepper_deals(session, name, cfg):
             price = th.get("price") or 0
             ref = th.get("nextBestPrice") or 0
             pct = th.get("percentage") or 0
+            ref_kind = "next_shop"
             if ref <= price and 0 < pct < 100 and price > 0:
-                ref = price / (1 - pct / 100)  # discount stated by the poster
+                ref, ref_kind = price / (1 - pct / 100), "poster"  # discount stated by the poster
             title = html.unescape(th.get("title", ""))
             is_error = bool(PRICE_ERROR.search(title))
             if (ref <= price or MONTHLY.search(title)) and not is_error:
@@ -148,6 +163,7 @@ def pepper_deals(session, name, cfg):
                 "title": title,
                 "price": price,
                 "ref": ref if ref > price else None,
+                "ref_kind": ref_kind,
                 "cur": cur,
                 "price_error": is_error,
                 "url": th.get("shareableLink") or url,
@@ -224,6 +240,7 @@ def camel_deals(session, name, cfg):
                 "title": title,
                 "price": price,
                 "ref": ref,
+                "ref_kind": "camel",
                 "cur": "€",
                 "price_error": False,
                 # camelcamelcamel pages often block phone browsers, so link the product itself
@@ -308,6 +325,67 @@ def cheaper_on_amazon_de(deal, de_prices, cfg):
     return deal["amazon_de_cost"] <= deal["price"] * deal["vat_factor"] + deal["delivery"]
 
 
+def landed_cost(deal):
+    """What a deal costs delivered to Greece, with Greek VAT, in euros (once is_big priced its delivery)."""
+    return deal["price"] * deal["vat_factor"] * TO_EUR.get(deal["cur"], 1.0) + deal["delivery"]
+
+
+def load_prices(today):
+    """prices.json without days older than HISTORY_DAYS: product id → {day: lowest delivered price}."""
+    history = json.loads(PRICES.read_text(encoding="utf-8")) if PRICES.exists() else {}
+    oldest = (today - timedelta(days=HISTORY_DAYS)).isoformat()
+    history = {asin: {day: p for day, p in days.items() if day >= oldest} for asin, days in history.items()}
+    return {asin: days for asin, days in history.items() if days}
+
+
+def save_prices(history):
+    """One product per line, so a run's commit changes only the lines of the products it saw."""
+    lines = [f"{json.dumps(asin)}: {json.dumps(days, sort_keys=True)}" for asin, days in sorted(history.items())]
+    PRICES.write_text("{\n" + ",\n".join(lines) + "\n}\n", encoding="utf-8")
+
+
+def remember_prices(deals, history, today, cfg):
+    """Keep the day's lowest delivered price of each Amazon product among the deals is_big priced.
+
+    Price errors are left out (shops often cancel them), and so are used items: a used price
+    must not make a new item's deal look like no deal.
+    """
+    for d in deals:
+        asin = AMAZON_ASIN.search(d["url"])
+        if (asin and d["price"] and "delivery" in d and not d["price_error"]
+                and not mentions(d["title"], cfg["used_words"])):
+            cost = round(landed_cost(d), 2)
+            days = history.setdefault(asin.group(1), {})
+            days[today.isoformat()] = min(cost, days.get(today.isoformat(), cost))
+
+
+def cheaper_lately(deal, history, today):
+    """Whether the deal's product cost less, delivered, in the last LATELY_DAYS days: then it is no
+    real drop. The history only holds prices the sources listed, so it can miss lower ones.
+
+    Also keeps on the deal what the message says about the history: a new low since the first
+    day seen, or a lower price longer ago. Today's prices may be the deal's own, so a price only
+    counts as lower or higher when 2% away.
+    """
+    asin = AMAZON_ASIN.search(deal["url"])
+    days = history.get(asin.group(1), {}) if asin else {}
+    if not days or deal["price"] is None:
+        return False
+    cost = landed_cost(deal)
+    lately = (today - timedelta(days=LATELY_DAYS)).isoformat()
+    if any(p < cost * 0.98 for day, p in days.items() if day >= lately):
+        return True
+    before = {day: p for day, p in days.items() if day < today.isoformat()}
+    if not before:
+        return False
+    low_day, first = min(before, key=before.get), date.fromisoformat(min(before))
+    if before[low_day] > cost * 1.02 and (today - first).days >= 7:
+        deal["history_note"] = f"📉 φθηνότερο από κάθε τιμή που είδαμε από {first:%d/%m}"
+    elif before[low_day] < cost * 0.98:
+        deal["history_note"] = f"ℹ️ ήταν {fmt_price(before[low_day], '€')} στις {date.fromisoformat(low_day):%d/%m}"
+    return False
+
+
 def shop_terms(deal, cfg):
     """How the deal's shop reaches Greece: (order value for free delivery, delivery rate below it
     as (per parcel, per kg), forwarded, price factor for Greek VAT).
@@ -357,6 +435,15 @@ def has_known_brand(title, cfg):
 def good_condition(title, cfg):
     """New items pass; used or refurbished ones only when the title says they are like new."""
     return not mentions(title, cfg["used_words"]) or mentions(title, cfg["like_new_words"])
+
+
+def keyboard_layout(deal, cfg):
+    """The layout a keyboard from a foreign shop most likely has (by the shop's country), or None."""
+    if deal.get("local") or not mentions(deal["title"], cfg["keyboard_words"]) \
+            or mentions(deal["title"], cfg["keyboard_layout_ok_words"]):
+        return None
+    host = urlsplit(deal["url"]).netloc or deal.get("shop_host", "")
+    return LAYOUTS.get(host.rsplit(".", 1)[-1]) or LAYOUTS.get(FLAG_COUNTRY.get(deal["flag"]))
 
 
 def is_big(deal, cfg):
@@ -445,7 +532,9 @@ def format_deal(d, cfg):
     if d["ref"] and d["price"] is not None:
         final = round((1 - (d["price"] + delivery / rate) / d["ref"]) * 100)  # after delivery
         fee = f" + {fmt_price(delivery, '€')} {'προώθηση' if d.get('forwarded') else 'μεταφορικά'}" if delivery else ""
-        head = f"{icon} <b>−{final}%</b> · <b>{fmt_price(d['price'], cur)}</b>{fee} αντί {fmt_price(d['ref'], cur)}"
+        kind = REF_KINDS.get(d.get("ref_kind"), "")
+        head = (f"{icon} <b>−{final}%</b> · <b>{fmt_price(d['price'], cur)}</b>{fee} αντί {fmt_price(d['ref'], cur)}"
+                + (f" {kind}" if kind else ""))
     elif d["price"] is None:
         head = f"{icon} <b>προσφορά</b>"
     else:
@@ -464,6 +553,8 @@ def format_deal(d, cfg):
         evidence = [f"📉 {d['source']}"]
     if RECORD_LOW.search(d["title"]):
         evidence.append("χαμηλότερη τιμή κατά τον αναρτήσαντα")
+    if d.get("history_note"):
+        evidence.append(d["history_note"])
     if d.get("topic"):
         evidence.append(f"🏷️ {html.escape(d['topic'], quote=False)}")
 
@@ -485,11 +576,20 @@ def format_deal(d, cfg):
             landed = d["price"] * d["vat_factor"] + delivery / rate
             delivery_line += f" · τελικό με ελληνικό ΦΠΑ ≈ {fmt_price(landed, cur)}"
         if d.get("bulky"):
-            delivery_line += " · ⚠️ ογκώδες: δες τα μεταφορικά στο καλάθι"
+            delivery_line += " · ⚠️ ογκώδες: δες τα μεταφορικά στο καλάθι· και η επιστροφή μπορεί να κοστίσει δεκάδες €"
         if d.get("amazon_de_cost"):
             delivery_line += f" · 🇩🇪 στο Amazon.de ≈ {fmt_price(d['amazon_de_cost'], '€')}"
+    if d.get("forwarded"):
+        delivery_line += ("\n↩️ επιστροφή στη Γερμανία με δικά σου έξοδα · νόμιμη εγγύηση μέσω του γερμανικού "
+                          "καταστήματος · ο γερμανικός ΦΠΑ δεν συμψηφίζεται")
     barebone = ("⚠️ <b>barebone</b>: χωρίς RAM και δίσκο (συνήθως και χωρίς Windows), πρόσθεσε το κόστος τους"
                 if mentions(d["title"], cfg["barebone_words"]) else "")
+    layout = keyboard_layout(d, cfg)
+    keyboard = f"⌨️ διάταξη πληκτρολογίου: μάλλον {layout}, όχι ελληνική" if layout else ""
+    unchecked = ["κριτικές (≥30, στο καλύτερο 10%)", "χαμηλό 30 ημερών", "χρώμα/παραλλαγή", "τελικό ποσό στο ταμείο"]
+    if not d.get("local"):
+        unchecked.append("εγγύηση κατασκευαστή για Ελλάδα")
+    unchecked_line = "☑️ δεν ελέγχθηκαν: " + ", ".join(unchecked)
 
     links = [f'<a href="{html.escape(d["url"])}">🛒 αγορά</a>']
     asin = AMAZON_ASIN.search(d["url"])
@@ -508,8 +608,8 @@ def format_deal(d, cfg):
     if extra and "camelcamelcamel" not in extra:
         links.append(f'<a href="{html.escape(extra)}">💬 συζήτηση</a>')
 
-    lines = [head, html.escape(d["title"][:120], quote=False), barebone, " · ".join(evidence), delivery_line,
-             " · ".join(links)]
+    lines = [head, html.escape(d["title"][:120], quote=False), barebone, keyboard, " · ".join(evidence),
+             delivery_line, unchecked_line, " · ".join(links)]
     return "\n".join(line for line in lines if line)
 
 
@@ -665,6 +765,8 @@ def main():
 
     found, counts, read, failed = [], [], {}, {}
     de_prices = {}  # Amazon.de prices read in this run, by product id
+    today = datetime.now(timezone.utc).date()
+    history = load_prices(today)
     for name, enabled in cfg["sources"].items():
         if not enabled:
             continue
@@ -680,7 +782,8 @@ def main():
             continue
         resolve_short_shops(session, deals)
         add_amazon_de_prices(deals, de_prices)
-        big =[d for d in deals if is_big(d, cfg)]
+        big = [d for d in deals if is_big(d, cfg)]
+        remember_prices(deals, history, today, cfg)
         counts.append(f"{name} {len(big)}/{len(deals)}")
         read[name] = len(deals)
         found.extend(big)
@@ -693,13 +796,19 @@ def main():
     new.sort(key=lambda d: (not d["price_error"], d["price"] / d["ref"] if d["ref"] else 1))
     add_shop_links(session, new)
     add_amazon_de_prices(new, de_prices)
-    # an Amazon.it/.fr/.es deal is no deal when Amazon.de sells the same product for less, and
-    # one message per product, and none for a product another post already brought in the last 30 days;
-    # the posts left out are still remembered as seen below
+    remember_prices(new, history, today, cfg)  # community deals know their Amazon product only now
+    # an Amazon.it/.fr/.es deal is no deal when Amazon.de sells the same product for less, nor one
+    # whose product cost less in the last 30 days; one message per product, and none for a product
+    # another post already brought in the last 30 days; the posts left out are still remembered as seen below
     worth = [d for d in new if not cheaper_on_amazon_de(d, de_prices, cfg)]
-    to_send = [d for d in unique_products(worth) if f"product:{product_key(d)}" not in seen]
-    dearer = f", {len(new) - len(worth)} φθηνότερες στο Amazon.de" if len(worth) < len(new) else ""
-    log(f"έλεγχος: {', '.join(counts)} -> {len(to_send)} νέες{dearer}")
+    real = [d for d in worth if not cheaper_lately(d, history, today)]
+    to_send = [d for d in unique_products(real) if f"product:{product_key(d)}" not in seen]
+    left_out = ""
+    if len(worth) < len(new):
+        left_out += f", {len(new) - len(worth)} φθηνότερες στο Amazon.de"
+    if len(real) < len(worth):
+        left_out += f", {len(worth) - len(real)} φθηνότερες τις τελευταίες {LATELY_DAYS} μέρες"
+    log(f"έλεγχος: {', '.join(counts)} -> {len(to_send)} νέες{left_out}")
 
     if args.dry_run:
         for d in to_send:
@@ -710,6 +819,7 @@ def main():
         print("\n" + re.sub(r"</?b>", "", status_message(problems, read, runs, *sent_last_day())))
         return 0
 
+    save_prices(history)
     if new:
         if telegram_ready(cfg):
             send_deals(cfg, to_send)

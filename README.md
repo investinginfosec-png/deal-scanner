@@ -26,18 +26,30 @@ GitHub's servers, so its offers reach Telegram through forum email notifications
   less, delivered to Greece. Amazon's terms forbid robots on its pages and camelcamelcamel's
   product pages refuse scripts, so this uses only the Amazon.de prices the sources list in the
   same run; every such message also links the product on Amazon.de to compare by hand.
+- `prices.json`: for 90 days, the lowest delivered price (Greek VAT and delivery included) of each
+  Amazon product the sources list, per day. A deal is not sent when its product cost less in the
+  last 30 days (the EU's measure for a discount); otherwise the message says when it is the lowest
+  seen, or what it cost longer ago. It knows only the prices the sources listed, so it can miss
+  lower ones; price errors and used items are left out.
 - `barebone_words`: titles with these words get a warning that the item comes without RAM and
   storage (mini PCs sold as kits).
+- `keyboard_words`: keyboards from foreign shops get a warning about the country's layout (QWERTZ,
+  AZERTY, …), unless the title names a US or UK layout (`keyboard_layout_ok_words`).
+  110–120 V and US-plug items are in `exclude_words`.
 - `forwarding`: German shops that don't ship to Greece (MediaMarkt, Otto, …) are reachable
   through a parcel forwarder (Forward2me, ColisExpat). Their deals count only for items
   whose usual price is at least `min_usual_price_eur`, and the estimated forwarding cost
   for the topic's parcel size is added before the drop is checked.
 - One message per deal: 🟢 reaches Greece directly, 🟡 only through a forwarder (sent without
-  a sound), ⚡ a price error. It shows the drop after delivery, community votes and comments,
-  the final price with Greek VAT, a warning for bulky parcels, and links to buy, to the
-  Amazon reviews, to Skroutz (searched by brand and model), to the price history (Keepa)
-  and to the community's discussion. A product is sent once in 30 days, whichever
-  community posts it.
+  a sound), ⚡ a price error. It shows the drop after delivery and what the usual price is (the
+  next shop, the poster's stated discount, or camelcamelcamel's previous price, which can be a
+  dearer third-party seller's), community votes and comments, the final price with Greek VAT,
+  warnings for bulky parcels (delivery and return cost), a line of what was not checked
+  (reviews, 30-day low, colour/variant, checkout total, manufacturer's warranty in Greece), and
+  links to buy, to the Amazon reviews, to Skroutz (searched by brand and model), to the price
+  history (Keepa) and to the community's discussion. Forwarded deals add that returns go back
+  to Germany at the buyer's cost and that German VAT can't be offset. A product is sent once in
+  30 days, whichever community posts it.
 - Once a day, on the first run after `daily_status_utc_hour` (UTC), the scanner checks
   itself and sends a message only if something is wrong: a source failed or found nothing,
   or fewer than half of `expected_runs_per_day` runs happened.
@@ -47,7 +59,7 @@ GitHub's servers, so its offers reach Telegram through forum email notifications
   `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` repository secrets; locally from
   `secrets.json` (ignored by git).
 - `seen.json` remembers which posts and products were already sent; `found_deals.csv` is the
-  history; `status.json` is the day of the last self-check. It changes daily, so the run commits
+  history of sent deals; `prices.json` the prices seen; `status.json` is the day of the last self-check. It changes daily, so the run commits
   daily, which keeps GitHub from pausing the schedule (it does after 60 days without commits).
 
 Run locally: `python deal_scanner.py --dry-run` (prints only) or `python deal_scanner.py`.

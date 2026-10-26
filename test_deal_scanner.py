@@ -9,7 +9,7 @@ import html
 import json
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
@@ -23,7 +23,8 @@ def amazon_deal(title, ref=300.0, drop=None, temperature=None, **extra):
     """A voted mydealz deal on Amazon.de, `drop` percent (default: 5 over the minimum) below `ref`."""
     drop = CFG["min_drop_percent"] + 5 if drop is None else drop
     deal = {"key": "mydealz:1", "flag": "🇩🇪", "where": "Amazon", "source": "mydealz", "title": title,
-            "price": round(ref * (1 - drop / 100), 2), "ref": ref, "cur": "€", "price_error": False,
+            "price": round(ref * (1 - drop / 100), 2), "ref": ref, "ref_kind": "next_shop", "cur": "€",
+            "price_error": False,
             "url": f"https://www.amazon.de/dp/{ASIN}", "shop_host": "amazon.de", "category": "",
             "temperature": CFG["min_temperature"] + 10 if temperature is None else temperature,
             "comments": 3}
@@ -46,14 +47,15 @@ class ConfigTest(unittest.TestCase):
         # the Apps Script reads topics, brands, used_words, like_new_words and exclude_words too
         for key in ["min_drop_percent", "min_saving_eur", "min_usual_price_eur", "min_temperature",
                     "hot_tier", "shops", "parcel_kg", "forwarding", "topics", "brands", "used_words", "like_new_words",
-                    "barebone_words",
+                    "barebone_words", "keyboard_words", "keyboard_layout_ok_words",
                     "exclude_words", "sources", "pepper_pages", "insomnia_days", "daily_status_utc_hour",
                     "expected_runs_per_day", "skroutz_categories"]:
             self.assertIn(key, CFG)
         self.assertIn(CFG["daily_status_utc_hour"], range(24))
 
     def test_word_lists(self):
-        for key in ["brands", "used_words", "like_new_words", "exclude_words", "barebone_words"]:
+        for key in ["brands", "used_words", "like_new_words", "exclude_words", "barebone_words", "keyboard_words",
+                    "keyboard_layout_ok_words"]:
             self.assertTrue(CFG[key], key)
             for word in CFG[key]:
                 self.assertTrue(isinstance(word, str) and word.strip(), f"{key}: {word!r}")
@@ -96,7 +98,8 @@ class FilterTest(unittest.TestCase):
                       "Samsung Soundbar HW-Q990D", "Ubiquiti SFP+ Transceiver", "Τηλεόραση LG 55",
                       "PC Portable 14\" Asus Vivobook 14 - Snapdragon X, SSD 512 Go", "Ordenador portátil Lenovo IdeaPad",
                       "PC portatile HP 15", "Téléviseur LG OLED 55", "Televisor Samsung 55", "Televisore Sony Bravia",
-                      "Barre de son Sonos Ray", "Barra de sonido Samsung", "Écran PC Samsung Odyssey G5"]:
+                      "Barre de son Sonos Ray", "Barra de sonido Samsung", "Écran PC Samsung Odyssey G5",
+                      "Tiger JKT-D10U Reiskocher 1 l, 110V", "Zojirushi Wasserkocher mit US-Stecker"]:
             self.assertTrue(ds.mentions(title, CFG["exclude_words"]), title)
             self.assertFalse(ds.is_big(amazon_deal(title), CFG), title)
 
@@ -236,7 +239,10 @@ class LinksAndMessagesTest(unittest.TestCase):
         text = ds.format_deal(deal, CFG)
         head, title = text.split("\n")[:2]
         self.assertTrue(head.startswith(f"🟢 <b>−{CFG['min_drop_percent'] + 5}%</b>"), head)
+        self.assertTrue(head.endswith("αντί 300,00€ στο επόμενο κατάστημα"), head)  # what the usual price is
         self.assertIn("&lt;neu&gt;", title)
+        self.assertIn("☑️ δεν ελέγχθηκαν: κριτικές (≥30, στο καλύτερο 10%), χαμηλό 30 ημερών", text)
+        self.assertIn("εγγύηση κατασκευαστή για Ελλάδα", text)
         self.assertIn(f"keepa.com/#!product/3-{ASIN}", text)
         self.assertIn(f"amazon.de/product-reviews/{ASIN}", text)
         self.assertIn("skroutz.gr/search?keyphrase=Sony+WH-1000XM5", text)
@@ -257,6 +263,8 @@ class LinksAndMessagesTest(unittest.TestCase):
         text = ds.format_deal(deal, CFG)
         self.assertTrue(text.startswith("🟡"), text)
         self.assertIn("μόνο μέσω προώθησης", text)
+        self.assertIn("↩️ επιστροφή στη Γερμανία με δικά σου έξοδα", text)
+        self.assertIn("ο γερμανικός ΦΠΑ δεν συμψηφίζεται", text)
 
     def test_message_from_another_amazon(self):
         deal = amazon_deal(HEADPHONES, ref=600, drop=60, shop_host="www.amazon.it", url=f"https://www.amazon.it/dp/{ASIN}")
@@ -282,9 +290,27 @@ class LinksAndMessagesTest(unittest.TestCase):
         deal = amazon_deal("Ninja Heißluftfritteuse AF300EU")
         self.assertTrue(ds.is_big(deal, CFG))
         self.assertIn("ογκώδες", ds.format_deal(deal, CFG))
+        self.assertIn("η επιστροφή μπορεί να κοστίσει δεκάδες €", ds.format_deal(deal, CFG))
         deal = amazon_deal(HEADPHONES)
         ds.is_big(deal, CFG)
         self.assertNotIn("ογκώδες", ds.format_deal(deal, CFG))
+
+    def test_usual_price_says_where_it_comes_from(self):
+        for kind, words in [("poster", "κατά τον αναρτήσαντα"), ("camel", "πριν (camelcamelcamel)")]:
+            deal = amazon_deal(HEADPHONES, ref_kind=kind)
+            ds.is_big(deal, CFG)
+            self.assertTrue(ds.format_deal(deal, CFG).split("\n")[0].endswith(words), kind)
+
+    def test_keyboard_layout_warning(self):
+        for host, layout in [("amazon.de", "γερμανική QWERTZ"), ("amazon.fr", "γαλλική AZERTY"),
+                             ("amazon.es", "ισπανική"), ("amazon.it", "ιταλική")]:
+            deal = amazon_deal("Logitech MX Keys S Tastatur", ref=600, drop=60, shop_host=host,
+                               url=f"https://www.{host}/dp/{ASIN}")
+            self.assertTrue(ds.is_big(deal, CFG), host)
+            self.assertIn(f"⌨️ διάταξη πληκτρολογίου: μάλλον {layout}, όχι ελληνική", ds.format_deal(deal, CFG))
+        for deal in [amazon_deal("Logitech MX Keys S Tastatur, US-Layout"), amazon_deal(HEADPHONES)]:
+            ds.is_big(deal, CFG)
+            self.assertNotIn("⌨️", ds.format_deal(deal, CFG), deal["title"])
 
     def test_greek_offer_message(self):
         deal = greek_offer("Φριτέζα αέρος Philips 7.2lt @ Kotsovolos")
@@ -292,6 +318,8 @@ class LinksAndMessagesTest(unittest.TestCase):
         text = ds.format_deal(deal, CFG)
         self.assertIn("προσφορά", text)
         self.assertNotIn("Skroutz", text)  # already a Greek shop
+        self.assertIn("☑️ δεν ελέγχθηκαν", text)
+        self.assertNotIn("εγγύηση κατασκευαστή", text)
 
     def test_forwarded_deals_arrive_silently(self):
         sent = []
@@ -344,6 +372,62 @@ class PricesAndDuplicatesTest(unittest.TestCase):
         a = amazon_deal("ZWILLING Greenwich Besteckset 68-teilig für 12 Personen", key="mydealz:1")
         b = amazon_deal("ZWILLING Greenwich Besteckset 68-tlg. (12 Personen)", key="preisjaeger:2")
         self.assertEqual(ds.product_key(a), ds.product_key(b))
+
+
+class PriceHistoryTest(unittest.TestCase):
+    TODAY = date(2026, 10, 26)
+
+    def day(self, days_ago):
+        return (self.TODAY - timedelta(days=days_ago)).isoformat()
+
+    def priced(self, title=HEADPHONES, **extra):
+        deal = amazon_deal(title, **extra)
+        self.assertTrue(ds.is_big(deal, CFG), title)
+        return deal
+
+    def test_remembers_the_days_lowest_delivered_price(self):
+        history = {}
+        dearer, cheaper = self.priced(), self.priced(drop=CFG["min_drop_percent"] + 10)
+        ds.remember_prices([dearer, cheaper], history, self.TODAY, CFG)
+        self.assertEqual(history, {ASIN: {self.day(0): round(cheaper["price"] * CFG["shops"]["amazon.de"]["vat_factor"], 2)}})
+        # price errors get cancelled and used items are another product; neither counts
+        left_out = [self.priced(price_error=True, url="https://www.amazon.de/dp/B0ERROR123"),
+                    self.priced(HEADPHONES + " refurbished, wie neu", url="https://www.amazon.de/dp/B0USED1234"),
+                    self.priced(ref=600, drop=60, shop_host="mediamarkt.de", url="https://www.mediamarkt.de/x"),
+                    amazon_deal("Noname Kopfhörer", url="https://www.amazon.de/dp/B0NONAME12")]  # not priced by is_big
+        ds.remember_prices(left_out, history, self.TODAY, CFG)
+        self.assertEqual(list(history), [ASIN])
+
+    def test_no_deal_when_it_cost_less_lately(self):
+        deal = self.priced()
+        cost = ds.landed_cost(deal)
+        self.assertTrue(ds.cheaper_lately(deal, {ASIN: {self.day(10): cost * 0.9}}, self.TODAY))
+        self.assertFalse(ds.cheaper_lately(deal, {}, self.TODAY))
+        own = self.priced()  # earlier runs today saw this same deal
+        self.assertFalse(ds.cheaper_lately(own, {ASIN: {self.day(0): round(cost, 2)}}, self.TODAY))
+        self.assertNotIn("history_note", own)
+
+    def test_history_in_the_message(self):
+        cost = ds.landed_cost(self.priced())
+        older = self.priced()  # cheaper, but over 30 days ago: still a deal
+        self.assertFalse(ds.cheaper_lately(older, {ASIN: {self.day(40): cost * 0.9}}, self.TODAY))
+        when = date.fromisoformat(self.day(40))
+        self.assertIn(f"ℹ️ ήταν {ds.fmt_price(cost * 0.9, '€')} στις {when:%d/%m}", ds.format_deal(older, CFG))
+        low = self.priced()
+        self.assertFalse(ds.cheaper_lately(low, {ASIN: {self.day(20): cost * 1.2, self.day(10): cost * 1.1}}, self.TODAY))
+        when = date.fromisoformat(self.day(20))
+        self.assertIn(f"📉 φθηνότερο από κάθε τιμή που είδαμε από {when:%d/%m}", ds.format_deal(low, CFG))
+        recent = self.priced()  # a few days of prices say little
+        self.assertFalse(ds.cheaper_lately(recent, {ASIN: {self.day(3): cost * 1.2}}, self.TODAY))
+        self.assertNotIn("history_note", recent)
+
+    def test_saved_prices_keep_90_days(self):
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(ds, "PRICES", Path(tmp) / "prices.json"):
+            self.assertEqual(ds.load_prices(self.TODAY), {})
+            ds.save_prices({})
+            self.assertEqual(ds.load_prices(self.TODAY), {})
+            ds.save_prices({ASIN: {self.day(100): 1.0, self.day(5): 2.0}, "B0OLD12345": {self.day(95): 3.0}})
+            self.assertEqual(ds.load_prices(self.TODAY), {ASIN: {self.day(5): 2.0}})
 
 
 def vue_blob(thread):
