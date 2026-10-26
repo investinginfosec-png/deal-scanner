@@ -280,7 +280,7 @@ class LinksAndMessagesTest(unittest.TestCase):
         targets = lambda session, url, refused: ("https://amzn.eu/d/abc" if "visit" in url
                                                  else f"https://www.amazon.de/dp/{ASIN}")
         with mock.patch.object(ds, "redirect_target", side_effect=targets), mock.patch.object(ds.time, "sleep"):
-            ds.resolve_short_shops(None, [deal], {})
+            ds.resolve_short_shops(None, [deal], {}, {})
         self.assertEqual(deal["shop_host"], "www.amazon.de")
         self.assertEqual(deal["url"], f"https://www.amazon.de/dp/{ASIN}")
         self.assertTrue(ds.is_big(deal, CFG))
@@ -600,12 +600,25 @@ class BlockTest(unittest.TestCase):
                              visit_url=f"https://www.mydealz.de/visit/threadmain/{i}") for i in range(3)]
         refused = {}
         with mock.patch.object(ds.time, "sleep"), mock.patch.object(ds, "log"):
-            ds.add_shop_links(session, deals, refused)
+            ds.add_shop_links(session, deals, refused, {})
         self.assertEqual(session.get.call_count, 1)
         self.assertEqual(refused, {"www.mydealz.de": "HTTP 403"})
         self.assertEqual(deals[0]["url"], "https://www.mydealz.de/deals/x-0")  # still links the community
         self.assertEqual(ds.source_host("mydealz"), "www.mydealz.de")
         self.assertEqual(ds.source_host("camel_it"), "it.camelcamelcamel.com")
+
+    def test_each_post_is_asked_once(self):
+        session = mock.Mock()
+        session.get.return_value = response(302, Location=f"https://www.amazon.de/dp/{ASIN}")
+        links = {}
+        for _ in range(2):  # two runs while the post stays on the hot list
+            deal = amazon_deal(HEADPHONES, url="https://www.mydealz.de/deals/x-1",
+                               visit_url="https://www.mydealz.de/visit/threadmain/1")
+            with mock.patch.object(ds.time, "sleep"):
+                ds.add_shop_links(session, [deal], {}, links)
+            self.assertEqual(deal["url"], f"https://www.amazon.de/dp/{ASIN}")
+        self.assertEqual(session.get.call_count, 1)
+        self.assertEqual(links["mydealz:1"][1], f"https://www.amazon.de/dp/{ASIN}")
 
     def test_rest_for_the_day_then_every_other_day(self):
         day = date(2026, 10, 26)

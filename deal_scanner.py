@@ -33,6 +33,7 @@ STATE = HERE / "seen.json"
 FOUND_LOG = HERE / "found_deals.csv"
 STATUS = HERE / "status.json"  # the day the last daily status message was sent
 PRICES = HERE / "prices.json"  # delivered prices seen per Amazon product, by day
+LINKS = HERE / "links.json"  # the shop each community post leads to
 RUN_LOG = HERE / "scanner.log"
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -292,30 +293,52 @@ def redirect_target(session, url, refused):
     return r.headers.get("Location", "")
 
 
-def add_shop_links(session, deals, refused):
-    """Point community deals straight at the shop, read from the site's redirect (not followed)."""
+def add_shop_links(session, deals, refused, links):
+    """Point community deals straight at the shop, read from the site's redirect (not followed).
+
+    links: the shop each post led to (post key → [time, url]); a post's redirect is asked only
+    once, like a person who clicks a deal once, not on every run while it stays on the hot list.
+    """
     for d in deals:
         if "visit_url" not in d:
             continue
         visit = d.pop("visit_url")
-        if urlsplit(visit).netloc in refused:
+        if d["key"] in links:
+            shop = links[d["key"]][1]
+        elif urlsplit(visit).netloc in refused:
             continue
-        target = redirect_target(session, visit, refused)
-        shop = parse_qs(urlsplit(target).query).get("url", [target])[0]
-        if urlsplit(shop).netloc in AMAZON_SHORT_HOSTS:  # amzn.eu/… → amazon.de/dp/…
-            shop = redirect_target(session, shop, refused) or shop
+        else:
+            target = redirect_target(session, visit, refused)
+            shop = parse_qs(urlsplit(target).query).get("url", [target])[0]
+            if urlsplit(shop).netloc in AMAZON_SHORT_HOSTS:  # amzn.eu/… → amazon.de/dp/…
+                shop = redirect_target(session, shop, refused) or shop
+            time.sleep(3)
+            if shop.startswith("http") and urlsplit(shop).netloc not in AMAZON_SHORT_HOSTS:
+                links[d["key"]] = [int(time.time()), shop]  # a failed lookup is tried again next run
         if shop.startswith("http") and urlsplit(shop).netloc != urlsplit(d["url"]).netloc:
             d["extra_url"] = d["url"]  # the community's page, linked as the discussion
             d["url"] = shop
-        time.sleep(3)
 
 
-def resolve_short_shops(session, deals, refused):
+def resolve_short_shops(session, deals, refused, links):
     """Amazon short links hide which Amazon sells the deal, so look it up before filtering."""
     short = [d for d in deals if d.get("shop_host") in AMAZON_SHORT_HOSTS]
-    add_shop_links(session, short, refused)
+    add_shop_links(session, short, refused, links)
     for d in short:
         d["shop_host"] = urlsplit(d["url"]).netloc
+
+
+def load_links():
+    """links.json without posts older than 30 days (they have left the hot lists by then)."""
+    links = json.loads(LINKS.read_text(encoding="utf-8")) if LINKS.exists() else {}
+    now = int(time.time())
+    return {key: v for key, v in links.items() if now - v[0] < 30 * 86400}
+
+
+def save_links(links):
+    """One post per line, so a run's commit changes only the posts it added."""
+    lines = [f"{json.dumps(key)}: {json.dumps(v)}" for key, v in sorted(links.items())]
+    LINKS.write_text("{\n" + ",\n".join(lines) + "\n}\n", encoding="utf-8")
 
 
 def source_host(name):
@@ -932,6 +955,7 @@ def main():
     blocks = dict(read_status().get("blocked", {}))  # sources that refused us lately
     saved_blocks = dict(blocks)
     refused = {}  # hosts that refused us in this run
+    links = load_links()
     for name, enabled in cfg["sources"].items():
         if not enabled:
             continue
@@ -956,7 +980,7 @@ def main():
             failed[name] = f"σφάλμα {getattr(getattr(e, 'response', None), 'status_code', None) or e.__class__.__name__}"
             continue
         blocks.pop(name, None)
-        resolve_short_shops(session, deals, refused)
+        resolve_short_shops(session, deals, refused, links)
         add_amazon_de_prices(deals, de_prices, cfg)
         big = [d for d in deals if is_big(d, cfg)]
         remember_prices(deals, history, today, cfg)
@@ -970,7 +994,7 @@ def main():
             keys.add(d["key"])
             new.append(d)
     new.sort(key=lambda d: (not d["price_error"], d["price"] / d["ref"] if d["ref"] else 1))
-    add_shop_links(session, new, refused)
+    add_shop_links(session, new, refused, links)
     for name in cfg["sources"]:  # a community that refused its redirects rests too
         host_why = refused.get(source_host(name))
         if host_why and blocks.get(name, {}).get("day") != today.isoformat():
@@ -1001,6 +1025,7 @@ def main():
         return 0
 
     save_prices(history)
+    save_links(links)
     if blocks != saved_blocks:
         update_status(blocked=blocks)
     if new:

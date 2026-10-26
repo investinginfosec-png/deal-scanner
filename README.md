@@ -74,7 +74,8 @@ GitHub's servers, so its offers reach Telegram through forum email notifications
   `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` repository secrets; locally from
   `secrets.json` (ignored by git).
 - `seen.json` remembers which posts and products were already sent; `found_deals.csv` is the
-  history of sent deals; `prices.json` the prices seen; `status.json` the day of the last
+  history of sent deals; `prices.json` the prices seen; `links.json` the shop each community
+  post led to; `status.json` the day of the last
   self-check and the sites that refused us lately. It changes daily, so the run commits daily,
   which keeps GitHub from pausing the schedule (it does after 60 days without commits).
 
@@ -84,8 +85,9 @@ Checked 2026-10-25/26. A source is left out only for a legal or financial risk; 
 forbid automated reading is checked only by hand in a browser, never by this scanner.
 
 - mydealz, preisjaeger, dealabs, chollometro: their robots.txt allows the hot lists but not
-  /visit/ (checked 2026-10-26), the redirect to the shop, which the scanner still asks for each
-  new deal and each Amazon short link (one request, 3 s apart). Their terms call copying their
+  /visit/ (checked 2026-10-26), the redirect to the shop. The scanner asks it like a person who
+  clicks a deal once: only for deals that pass the filters or hide their Amazon behind a short
+  link, once per post (`links.json` remembers the shop for 30 days), 3 s apart. Their terms call copying their
   content or making it available to third parties misuse; the scanner only sends deals to its
   owner. Each community's own Deal-Alarm emails would be the cleanest route (they need an account
   per community).
